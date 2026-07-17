@@ -125,6 +125,23 @@ export SNOWFLAKE_ACCOUNT=... SNOWFLAKE_USER=... SNOWFLAKE_PASSWORD=...
 cd austender_project && dbt deps && dbt build
 dbt docs generate    # catalog + lineage
 ```
+
+**CI service user (one-time, for the `ci` target).** CI does not use a password;
+it connects as `austender_ci_svc` with an RSA key-pair. To reproduce on your own
+account:
+```bash
+openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ci_rsa_key.p8 -nocrypt
+openssl rsa -in ci_rsa_key.p8 -pubout -out ci_rsa_key.pub
+```
+```sql
+-- as ACCOUNTADMIN; paste the public key body (no header/footer, one line)
+CREATE USER IF NOT EXISTS austender_ci_svc
+  DEFAULT_ROLE = austender_ci DEFAULT_WAREHOUSE = austender_ci_wh;
+ALTER USER austender_ci_svc SET RSA_PUBLIC_KEY = '<public key body>';
+GRANT ROLE austender_ci TO USER austender_ci_svc;   -- as SECURITYADMIN
+```
+Then set repo secrets `SNOWFLAKE_CI_USER=austender_ci_svc` and
+`SNOWFLAKE_CI_PRIVATE_KEY=$(base64 -w0 ci_rsa_key.p8)`.
 </details>
 
 ### 3. BI
