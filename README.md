@@ -175,7 +175,49 @@ which version it is.
 `cnid` for all 241,164 rows — a search link derived from the id, not a link to the
 notice, so it is not modelled downstream.
 
-Two known caveats, deliberately not resolved: 9 contracts carry a placeholder
-value of `1`, and agency names appear in punctuation variants
-(`Department of Infrastructure, Transport` vs `... Transport`), which inflates
-`dim_agency`.
+**ABN is a hint, not an identifier — so the dimensions are keyed on
+`(name, abn)`.** This looks wrong at first glance: 6,942 supplier ABNs appear
+under more than one name, so `dim_supplier` holds 55,698 rows for fewer real
+suppliers, and an analyst counting suppliers overcounts. Keying on the ABN
+instead was tried and reverted, because the ABNs in this extract are not
+trustworthy in either direction:
+
+- **Some ABNs are shared buckets.** ABN `68706814312` carries **140 unrelated
+  names** — `A AND D INTERNATIONAL PTY LTD`, `ACT Public Sector Management`,
+  `AGOWA NO 1`, `BAE Systems Australia`. Keying on it merged them into one
+  supplier and labelled the row with whichever name was published last, so 863
+  contracts appeared to belong to a company that did not win them. Across the
+  extract, 442 ABNs carry ten or more names each, hiding 7,373 distinct supplier
+  names behind them, across 98,709 contracts and **$66.83B** of spend.
+- **Some ABNs really are one company** spelt many ways — ABN `47001407281` is 77
+  variants of `HAYS...`, and collapsing those would be correct.
+- **Agency ABNs are no better.** ABN `29468422437` covers `Centrelink` (8,681
+  notices), `Department of Human Services` (3,006) and `Department of
+  Agriculture Fisheries and Forestry` (2,980) — different portfolios, one ABN.
+
+Both failure modes are real, so neither key is safe on its own. `(name, abn)`
+over-splits, which is the recoverable failure: an analyst can group rows, but a
+merged number cannot be unmixed, and over-merging fabricates business facts.
+Resolving supplier identity properly needs an external reference — which is
+exactly the ABR lookup (`abr.business.gov.au`) that the source analysis proposed.
+Out of scope here, and named rather than silently faked.
+
+Two further caveats, deliberately not resolved: 9 contracts carry a placeholder
+value of `1` — surfaced by `assert_no_placeholder_values` as a build warning
+rather than hand-corrected, since the SourceURL cannot supply the real figure and
+a manual edit would not survive a reload; and agency names appear in punctuation
+variants (`Department of Infrastructure, Transport` vs `... Transport`), which
+inflates `dim_agency`.
+
+## Where this departs from the source analysis
+
+`data-analysis-and-solving-problem.pdf` profiles the raw CSV, and every figure in
+it was verified exact against the loaded data. Its decisions were written for a
+transform-then-load pipeline; a few translate differently into a medallion one:
+
+| Analysis decision | What the pipeline does instead |
+|---|---|
+| Delete the 92 rows with a NULL `categoryunspsc` | Keep them, coalesce to `'UNKNOWN'`. Bronze is as-is by contract; deleting source rows costs auditability and reload-safety for a 0.04% cosmetic gain |
+| Hand-correct the 9 placeholder values | Surface them with a warn-level test; manual edits do not survive `TRUNCATE + COPY` |
+| Exclude `supplierid` as redundant | Correct — it is derivable (the rule `ABN else name` reproduces it for 241,164 of 241,164 rows), so it is not carried past staging |
+| Fill missing ABNs by parsing the ABR | Still the right answer, and now better motivated: it is the only way to resolve the shared-ABN problem above. It belongs as a second Bronze source and a join, not an in-place patch |
