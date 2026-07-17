@@ -1,0 +1,5 @@
+normalized_name,category,reason
+FMS ACCOUNT,programme,"US Foreign Military Sales — a purchasing channel not a company; largest single supplier in the raw data at ~$10.1B across 477 contracts (all Defence/DMO)"
+FOREIGN MILITARY SALES,programme,"Same US FMS channel under a different spelling"
+DOMESTIC AIR TRAVEL PANEL PROVIDERS,panel,"A whole-of-government travel panel not a supplier; one contract of ~$1.03B"
+INTERNATIONAL AIR TRAVEL PANEL PROVIDERS,panel,"International leg of the same travel panel; one contract of ~$0.49B"

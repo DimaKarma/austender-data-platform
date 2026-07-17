@@ -20,6 +20,8 @@ venv/
 # data (the 75MB CSV is not committed)
 *.csv
 *.csv.gz
+# but dbt seeds are versioned reference data, not bulk source data
+!austender_project/seeds/*.csv
 
 # ABR bulk extract: ~944MB of archives and a ~2.6GB parsed CSV, re-downloadable
 ingestion/abr_data/
