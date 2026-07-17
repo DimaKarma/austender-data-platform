@@ -33,3 +33,6 @@ ingestion/abr_data/
 
 # OS
 .DS_Store
+
+# personal: kid-friendly explainer (Russian), not part of the public repo
+explain-to-kid.md

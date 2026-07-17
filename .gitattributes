@@ -1,0 +1,4 @@
+# Normalize line endings so the working tree is never phantom-modified on Windows.
+* text=auto eol=lf
+*.png binary
+*.pdf binary

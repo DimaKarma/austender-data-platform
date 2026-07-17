@@ -5,7 +5,7 @@
 
    What it does:
      1. Virtual warehouses (compute).
-     2. Database austender_db + the three Medallion schemas: BRONZE / SILVER / GOLD.
+     2. Database austender_db + Medallion schemas: BRONZE / SILVER / GOLD / MART.
      3. Role model following Snowflake RBAC best practice:
           - functional roles: DE (engineer), ANALYST (reads GOLD), CI (pipeline)
           - roles granted to SYSADMIN (hierarchy) and to the user.
@@ -69,22 +69,20 @@ GRANT ALL ON FUTURE TABLES IN DATABASE austender_db TO ROLE austender_de;
 GRANT ALL ON ALL VIEWS     IN DATABASE austender_db TO ROLE austender_de;
 GRANT ALL ON FUTURE VIEWS  IN DATABASE austender_db TO ROLE austender_de;
 
--- 3.4 Grants for CI (same profile, its own warehouse) -----------------
+-- 3.4 Grants for CI (least privilege) ---------------------------------
+--     CI builds into its own CI_SILVER/CI_GOLD/CI_MART schemas, which it
+--     CREATEs and therefore OWNS — so it needs no grants on them. Its only
+--     inputs are the shared BRONZE sources. It is deliberately given NOTHING on
+--     the prod SILVER/GOLD/MART, so the isolation is structural (grants), not
+--     just behavioural (the generate_schema_name macro): even a broken macro
+--     could not let a PR overwrite the BI-facing star, because the role cannot
+--     write there.
 GRANT USAGE ON WAREHOUSE austender_ci_wh TO ROLE austender_ci;
 GRANT USAGE ON DATABASE  austender_db TO ROLE austender_ci;
--- CI builds into its own CI_SILVER/CI_GOLD/CI_MART schemas (see the
--- generate_schema_name macro) so a PR run never rebuilds the BI-facing GOLD/MART.
--- It creates them on the fly, so it needs CREATE SCHEMA on the database.
 GRANT CREATE SCHEMA ON DATABASE austender_db TO ROLE austender_ci;
-GRANT USAGE ON ALL SCHEMAS IN DATABASE austender_db TO ROLE austender_ci;
-GRANT ALL ON SCHEMA austender_db.bronze TO ROLE austender_ci;
-GRANT ALL ON SCHEMA austender_db.silver TO ROLE austender_ci;
-GRANT ALL ON SCHEMA austender_db.gold   TO ROLE austender_ci;
-GRANT ALL ON SCHEMA austender_db.mart   TO ROLE austender_ci;
-GRANT ALL ON ALL TABLES    IN DATABASE austender_db TO ROLE austender_ci;
-GRANT ALL ON FUTURE TABLES IN DATABASE austender_db TO ROLE austender_ci;
-GRANT ALL ON ALL VIEWS     IN DATABASE austender_db TO ROLE austender_ci;
-GRANT ALL ON FUTURE VIEWS  IN DATABASE austender_db TO ROLE austender_ci;
+GRANT USAGE  ON SCHEMA austender_db.bronze TO ROLE austender_ci;
+GRANT SELECT ON ALL TABLES    IN SCHEMA austender_db.bronze TO ROLE austender_ci;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA austender_db.bronze TO ROLE austender_ci;
 
 -- 3.5 Grants for ANALYST (least privilege: read MART only, not the raw star)
 --     The analyst reads the consumption layer, where the caveats are already
@@ -105,10 +103,9 @@ GRANT SELECT ON FUTURE TABLES IN SCHEMA austender_db.mart TO ROLE austender_anal
 --     bootstrap.py substitutes this placeholder automatically.
 GRANT ROLE austender_de      TO USER YOUR_USERNAME;
 GRANT ROLE austender_analyst TO USER YOUR_USERNAME;
--- austender_ci is what GitHub Actions connects as (dbt build --target ci).
--- In a production account CI would authenticate as its own service user; here
--- the workflow reuses these credentials, so the role must be granted to them —
--- without this, `dbt build --target ci` cannot connect at all.
+-- GitHub Actions connects as its own service user austender_ci_svc (key-pair),
+-- created separately with the austender_ci role. Granting austender_ci to the
+-- human user too only enables local `dbt build --target ci` testing.
 GRANT ROLE austender_ci      TO USER YOUR_USERNAME;
 
 -- Smoke check

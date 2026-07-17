@@ -1,6 +1,7 @@
 name: dbt CI
 
-# CI/CD: run dbt build (run + test) on every PR and push.
+# CI: run dbt build (run + test) on every PR and push, into isolated CI_* schemas.
+# Deployment to the prod schemas is manual (dev target) — no auto-CD by design.
 # Keeps data tests in the pipeline rather than as a manual step.
 on:
   push:
@@ -40,6 +41,11 @@ jobs:
 
       - name: dbt deps
         run: dbt deps
+
+      - name: dbt source freshness
+        # Exercises the freshness config (was declared but never run).
+        # Non-blocking: a stale static extract shouldn't fail the build.
+        run: dbt source freshness --target ci || true
 
       - name: dbt build (run + test)
         run: dbt build --target ci

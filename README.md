@@ -1,9 +1,23 @@
 # AusTender Data Platform — Snowflake · dbt · Medallion · RBAC
 
+[![dbt CI](https://github.com/DimaKarma/austender-data-platform/actions/workflows/dbt_ci.yml/badge.svg)](https://github.com/DimaKarma/austender-data-platform/actions/workflows/dbt_ci.yml)
+
 An end-to-end analytics pipeline built on real data about Australian federal
 contracts ([AusTender](https://www.tenders.gov.au/)). The project targets the
 stack and requirements of the Medavie data-engineering role: **Snowflake, dbt,
-Medallion Architecture, RBAC, CI/CD**.
+Medallion Architecture, RBAC, CI**.
+
+> **TL;DR** — 241,164 government contracts flow through a Bronze → Silver → Gold →
+> Mart pipeline in Snowflake. Along the way it corrects a **$11.2B**
+> double-counting of contract amendments, loads the **20.4M-ABN** business register
+> as a second source to tell a real supplier from an agency's own ABN used as a
+> placeholder, and serves BI through a consumption layer where analysts *cannot*
+> run the naive (wrong) query — the raw star is hidden by grants. dbt does the
+> transforms, with an incremental fact, an SCD2 snapshot, and custom tests that
+> guard real regressions. **Every number in this README is verified against the
+> live account.** The most honest part is the commit history: an attempt to key
+> the supplier dimension on ABN, its revert, and the register-based fix that
+> replaced it — see *Data quality notes*.
 
 ## What this project demonstrates
 
@@ -12,20 +26,38 @@ Medallion Architecture, RBAC, CI/CD**.
   against the authority that issues them.
 - **Snowflake** — warehouse, database, schemas, file format, internal stage, `COPY INTO`.
 - **RBAC** — functional roles (`de` / `analyst` / `ci`), a hierarchy under `SYSADMIN`,
-  and least privilege (the analyst can only see the Gold layer).
-- **Medallion Architecture** — three layers: **Bronze** (raw) → **Silver** (cleansed) → **Gold** (star schema).
+  and least privilege: the analyst sees only the Mart, and the CI role is granted
+  nothing on the prod star (it can read Bronze and build its own `CI_*` schemas).
+- **Medallion Architecture** — **Bronze** (raw) → **Silver** (cleansed) → **Gold**
+  (star schema) → **Mart** (reporting views).
 - **SCD2 history** — a dbt snapshot tracks the supplier dimension's
   register-sourced attributes over time (an ABN going `ACT` → `CAN`), so a rename
   or a cancellation is preserved instead of overwritten on rebuild.
 - **dbt Core** — sources + freshness, staging/silver/gold models, surrogate keys,
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
-- **CI/CD** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
+- **CI** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
   `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI reads.
   CI authenticates as a dedicated service user with **key-pair auth**, not a
-  human's password.
+  human's password. (Deployment to the prod schemas is run manually from the dev
+  target — there is no auto-CD to the shared trial account by design.)
 - **ELT automation** — a Python loader instead of importing the CSV by hand.
 
 ## Architecture
+
+```mermaid
+flowchart LR
+    CSV[AusTender CSV<br/>241k contracts] --> B
+    ABR[ABR bulk extract<br/>20.4M ABNs] --> B
+    subgraph SF[Snowflake]
+        B[BRONZE<br/>raw, all STRING] --> S[SILVER<br/>typed, deduped,<br/>coalesced]
+        S --> G[GOLD<br/>star: dim_* + fct_contracts<br/>+ SCD2 snapshot]
+        G --> M[MART<br/>rpt_* reporting views<br/>caveats applied]
+    end
+    M --> BI[Power BI / Tableau<br/>analyst role, read-only]
+```
+
+<details>
+<summary>Same picture as ASCII (for terminals)</summary>
 
 ```
                  ┌────────────────────────────────────────────────────────┐
@@ -40,6 +72,7 @@ Medallion Architecture, RBAC, CI/CD**.
                  └────────────────────────────────────────────────────────┘
         Python loader              dbt (staging→silver)     dbt (gold star schema)
 ```
+</details>
 
 CI builds the same models under `CI_SILVER`/`CI_GOLD`/`CI_MART` (the
 `generate_schema_name` macro prefixes `CI_` on the `ci` target), reading the
