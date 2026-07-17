@@ -13,6 +13,11 @@
   registered entities.
 
   `unique` on supplier_key cannot see this: every merged row has its own key.
+
+  Note: given the current key (an ABN group is 'ABN:'||supplier_abn), this query
+  cannot fail — same key implies same ABN. It is kept as a structural tripwire
+  that WOULD catch a future change to entity_business_key. The live invariant is
+  asserted by assert_name_match_not_in_abn_entity instead.
 */
 
 select
