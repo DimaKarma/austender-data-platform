@@ -29,6 +29,33 @@ with suppliers as (
     -- dimension covers every contract the fact points at (no orphaned keys).
 ),
 
+name_lookup as (
+    select normalized_name, matched_abn from {{ ref('int_abr_name_lookup') }}
+),
+
+-- Resolve the ABN: use the stated one when present, otherwise a unique
+-- name-match against the register. abn_source records which — a name-matched
+-- ABN is a *suggestion*, never treated as a stated fact (see entity_business_key
+-- below, which will not group on it).
+resolved as (
+    select
+        s.supplier_name,
+        s.supplier_abn,
+        case
+            when s.supplier_abn <> 'UNKNOWN' then s.supplier_abn
+            when l.matched_abn is not null   then l.matched_abn
+        end as resolved_abn,
+        case
+            when s.supplier_abn <> 'UNKNOWN' then 'stated'
+            when l.matched_abn is not null   then 'abr_name_match'
+            else 'none'
+        end as abn_source
+    from suppliers s
+    left join name_lookup l
+      on {{ normalize_name('s.supplier_name') }} = l.normalized_name
+     and s.supplier_abn = 'UNKNOWN'
+),
+
 abr as (
     select abn, entity_name, entity_type_text, abn_status, is_government_entity
     from {{ ref('stg_abr_entity') }}
@@ -36,8 +63,10 @@ abr as (
 
 checked as (
     select
-        s.supplier_name,
-        s.supplier_abn,
+        r.supplier_name,
+        r.supplier_abn,
+        r.resolved_abn,
+        r.abn_source,
         a.entity_name       as abr_entity_name,
         a.entity_type_text  as abr_entity_type,
         a.abn_status        as abr_abn_status,
@@ -47,24 +76,25 @@ checked as (
         -- not a heuristic about how many names share an ABN.
         coalesce(
             a.is_government_entity
-            and {{ normalize_name('s.supplier_name') }} <> {{ normalize_name('a.entity_name') }},
+            and {{ normalize_name('r.supplier_name') }} <> {{ normalize_name('a.entity_name') }},
             false
         )                   as supplier_abn_is_placeholder
-    from suppliers s
+    from resolved r
     left join abr a
-      on s.supplier_abn = a.abn
+      on r.resolved_abn = a.abn
 ),
 
 keyed as (
     select
         *,
-        -- Group on the ABN only where the register vouches for it. Everything
-        -- else — no ABN, an ABN never issued, or a placeholder — falls back to
-        -- the name. The fallback over-splits (two spellings with no ABN stay
-        -- apart), which is the recoverable direction: an analyst can group rows,
-        -- but a wrongly merged number cannot be unmixed.
+        -- Group on the ABN only where it was STATED on the contract and the
+        -- register vouches for it. A name-matched ABN (abn_source =
+        -- 'abr_name_match') is a suggestion, so its rows stay name-keyed and
+        -- cannot pull a possible false positive into a real supplier's numbers.
+        -- The name fallback over-splits, which is the recoverable direction.
         case
-            when abr_entity_name is not null and not supplier_abn_is_placeholder
+            when abn_source = 'stated'
+                 and abr_entity_name is not null and not supplier_abn_is_placeholder
                 then 'ABN:' || supplier_abn
             else 'NAME:' || {{ normalize_name('supplier_name') }}
         end as entity_business_key,
@@ -74,7 +104,8 @@ keyed as (
         -- across the two, or a placeholder row would be labelled with the
         -- agency's name it is standing in for.
         case
-            when abr_entity_name is not null and not supplier_abn_is_placeholder
+            when abn_source = 'stated'
+                 and abr_entity_name is not null and not supplier_abn_is_placeholder
                 then abr_entity_name
             else supplier_name
         end as entity_name_candidate
@@ -96,6 +127,12 @@ select
     {{ dbt_utils.generate_surrogate_key(['k.supplier_name', 'k.supplier_abn']) }} as supplier_key,
     k.supplier_name,
     k.supplier_abn,
+
+    -- The ABN actually used to enrich this row, and where it came from:
+    -- 'stated' (on the contract), 'abr_name_match' (suggested from the register
+    -- by a unique name match), or 'none'.
+    k.resolved_abn,
+    k.abn_source,
 
     k.abr_entity_name,
     k.abr_entity_type,

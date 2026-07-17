@@ -25,6 +25,7 @@ supplier as (
         supplier_entity_name,
         supplier_name,
         supplier_abn,
+        abn_source,
         supplier_abn_is_placeholder,
         {{ normalize_name('supplier_name') }} as supplier_name_norm
     from {{ ref('dim_supplier') }}
@@ -56,6 +57,10 @@ select
     s.supplier_entity_name,
     s.supplier_name,
     s.supplier_abn,
+    -- 'stated' / 'abr_name_match' / 'none': whether the supplier's ABN was on the
+    -- contract or suggested from the register by name. Filter to 'stated' for
+    -- certain-only analysis.
+    s.abn_source,
 
     -- agency and category
     a.agency_name,

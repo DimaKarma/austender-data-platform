@@ -313,6 +313,29 @@ two registered entities.
 > [CC BY 3.0 AU](https://creativecommons.org/licenses/by/3.0/au/). The data is
 > used as published; the Registrar does not endorse this project.
 
+## Filling missing ABNs from the register (with provenance)
+
+A contract with no ABN can sometimes be resolved by matching its supplier name
+against the register. `int_abr_name_lookup` builds a name → ABN map and keeps
+**only unambiguous matches** — a normalized name that maps to exactly one ABN
+across the whole register. A name shared by two companies is dropped, because a
+suggested ABN must never be a guess between candidates.
+
+`dim_supplier` then carries `resolved_abn` and `abn_source`:
+`stated` (on the contract), `abr_name_match` (suggested from the register), or
+`none`. The suggested ABN is **never** treated as a stated fact: name-matched rows
+stay name-keyed, so a possible false positive cannot pull spend into a real
+supplier's entity, and every enriched fact row is flagged. `rpt_contracts.abn_source`
+exposes it, so an analyst can filter to `stated` for certain-only analysis or
+include `abr_name_match` to accept the suggestions.
+
+Measured on the live account: **1,913 of 13,545** distinct (normalized) no-ABN
+names match a single ABN, filling **3,786 contracts**. It is deliberately
+conservative — the
+register table holds one (main) name per ABN, so loading its trading and other
+names would roughly double the match rate. That is a bounded next step, not a
+reason to fabricate the rest.
+
 ## History: SCD2 on the supplier dimension
 
 Dimensions are rebuilt each run, so a change to a supplier's details would be
@@ -347,9 +370,8 @@ the placeholder flag can reach them. That cohort mixes three things:
 - **Genuine foreign suppliers** — `EADS CONSTRUCCIONES AERONAUTICAS SA`,
   `NAVANTIA, S.A.` — which correctly have no ABN.
 - **Australian companies whose ABN is simply missing** — `CSL LTD` ($0.80B),
-  `ADI MUNITIONS PTY LTD`. These are the fillable gaps: a local name-match
-  against the register resolves ~4,077 of 13,192 names (~7,900 contracts), which
-  is a follow-up rather than something to fake now.
+  `ADI MUNITIONS PTY LTD`. These are the fillable gaps, and they now are filled —
+  see **Filling missing ABNs** below.
 
 Two further caveats, deliberately not resolved: 9 contracts carry a placeholder
 value of `1` — surfaced by `assert_no_placeholder_values` as a build warning

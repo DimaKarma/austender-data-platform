@@ -13,9 +13,22 @@ models:
         data_tests: [not_null, unique]
       - name: supplier_name
         data_tests: [not_null]
+      - name: abn_source
+        description: "Where resolved_abn came from: 'stated' (on the contract),
+          'abr_name_match' (a suggested ABN from a unique register name match, for
+          a contract that stated none), or 'none'. Filter to 'stated' for
+          certain-only analysis; include 'abr_name_match' to accept suggestions."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['stated', 'abr_name_match', 'none']
+      - name: resolved_abn
+        description: "The ABN used to enrich this row (stated or name-matched).
+          NULL when abn_source = 'none'."
       - name: abr_entity_name
-        description: "The entity the register says the stated ABN belongs to.
-          NULL when the supplier has no ABN, or the ABN was never issued."
+        description: "The entity the register says the resolved ABN belongs to.
+          NULL when there is no ABN, stated or matched."
       - name: abr_entity_type
         description: "Registered entity type in words, e.g. 'Australian Private
           Company', 'Commonwealth Government Entity'."
