@@ -71,11 +71,14 @@ checked as (
         a.entity_type_text  as abr_entity_type,
         a.abn_status        as abr_abn_status,
 
-        -- The stated ABN belongs to a government body that is not this supplier:
-        -- an agency's own ABN standing in for a real one. The register's verdict,
-        -- not a heuristic about how many names share an ABN.
+        -- The STATED ABN belongs to a government body that is not this supplier:
+        -- an agency's own ABN standing in for a real one. Only applies to stated
+        -- ABNs — a name-matched ABN was found *because* the supplier name matches
+        -- one of the entity's registered names (including trading names), so it
+        -- is that entity, not a stand-in, and is never a placeholder.
         coalesce(
-            a.is_government_entity
+            r.abn_source = 'stated'
+            and a.is_government_entity
             and {{ normalize_name('r.supplier_name') }} <> {{ normalize_name('a.entity_name') }},
             false
         )                   as supplier_abn_is_placeholder

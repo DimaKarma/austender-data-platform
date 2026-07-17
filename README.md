@@ -72,7 +72,7 @@ Med-Pet/
 │   ├── seeds/                       # known_non_suppliers (curated: FMS, panels)
 │   ├── snapshots/                   # supplier_history (SCD2)
 │   └── models/
-│       ├── staging/                 # _bronze__sources.yml, stg_contracts, stg_abr_entity
+│       ├── staging/                 # stg_contracts, stg_abr_entity, stg_abr_names
 │       ├── silver/                  # slv_contracts (+ tests)
 │       ├── gold/                    # dim_* , fct_contracts (+ tests)
 │       └── mart/                    # rpt_* reporting views (consumption layer)
@@ -263,8 +263,10 @@ So rather than guess, the register itself is loaded and joined — see
 
 `ingestion/load_abr_to_bronze.py` downloads the **ABN Bulk Extract** (2 archives,
 ~944 MB), streams the 12.5 GB of XML inside straight out of the ZIPs without
-extracting, and loads all ~20.4M registered ABNs into `bronze.raw_abr_entity`.
-`stg_abr_entity` types it; `dim_supplier` joins it.
+extracting, and loads every name of the ~20.4M registered ABNs into
+`bronze.raw_abr_entity` (26.6M rows — one per name). `stg_abr_entity` filters to
+the canonical name (one per ABN) for enrichment; `stg_abr_names` keeps them all
+for matching.
 
 What it buys, measured against this extract:
 
@@ -329,12 +331,18 @@ supplier's entity, and every enriched fact row is flagged. `rpt_contracts.abn_so
 exposes it, so an analyst can filter to `stated` for certain-only analysis or
 include `abr_name_match` to accept the suggestions.
 
-Measured on the live account: **1,913 of 13,545** distinct (normalized) no-ABN
-names match a single ABN, filling **3,786 contracts**. It is deliberately
-conservative — the
-register table holds one (main) name per ABN, so loading its trading and other
-names would roughly double the match rate. That is a bounded next step, not a
-reason to fabricate the rest.
+Matching runs against **every** name each ABN is registered under — main,
+trading, and other — loaded into `bronze.raw_abr_entity` (26.6M rows, up from
+20.4M) and exposed by `stg_abr_names`. `stg_abr_entity` filters that to the
+canonical `MAIN` name (one row per ABN) so the enrichment join stays one-to-one
+(`assert_abr_entity_one_row_per_abn` guards it).
+
+Measured on the live account: **3,056 of 13,545** distinct (normalized) no-ABN
+names now match a single ABN, filling **5,636 contracts** — up from 1,913 / 3,786
+when only main names were matched. Still strictly unique matches; a name shared by
+two ABNs is dropped. A name-matched government entity (matched on a trading name)
+is correctly *not* flagged as a placeholder — the placeholder flag applies only to
+stated ABNs, since a name match means the supplier is that entity, not a stand-in.
 
 ## History: SCD2 on the supplier dimension
 

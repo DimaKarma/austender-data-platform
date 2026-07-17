@@ -65,7 +65,7 @@ PARTS = {
 }
 
 COLUMNS = ["abn", "abn_status", "abn_status_from_date", "entity_type_ind",
-           "entity_type_text", "entity_name", "state", "postcode"]
+           "entity_type_text", "entity_name", "name_type", "state", "postcode"]
 
 REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]
 
@@ -90,29 +90,43 @@ def download() -> None:
 
 # --- parse ------------------------------------------------------------
 
-def record_name(el) -> str:
-    """The entity's registered name.
+def record_names(el):
+    """Every name the entity is known by, as (name_type, name) pairs.
 
-    A record carries either a NonIndividualName (companies) or an IndividualName
-    (sole traders, who do bid for federal contracts). Prefer the main name
-    (type="MN"); fall back to whatever name is present.
+    Emits ALL names — the main name plus trading (TRD), other (OTN), business,
+    etc. — so a contract that used a supplier's trading name can still be matched
+    to its ABN. Exactly one pair is tagged 'MAIN' (the canonical name: the MN
+    non-individual name, or the legal individual name, or the first available),
+    so downstream can pick a single row per ABN for the entity attributes.
+    Duplicates within a record are collapsed.
     """
-    best = ""
+    names = []
     for n in el.iter("NonIndividualName"):
         text = (n.findtext("NonIndividualNameText") or "").strip()
-        if not text:
-            continue
-        if n.get("type") == "MN":
-            return text
-        best = best or text
+        if text:
+            names.append((n.get("type") or "UNK", text))
     for ind in el.iter("IndividualName"):
         full = " ".join(p for p in (ind.findtext("GivenName"),
                                     ind.findtext("FamilyName")) if p).strip()
         if full:
-            if ind.get("type") == "LGL":
-                return full
-            best = best or full
-    return best
+            names.append((ind.get("type") or "UNK", full))
+    if not names:
+        return []
+
+    # Choose the canonical row: prefer MN, then LGL, else the first.
+    main_idx = next((i for i, (t, _) in enumerate(names) if t == "MN"),
+                    next((i for i, (t, _) in enumerate(names) if t == "LGL"), 0))
+
+    # Emit MAIN first so dedup can never drop it (a later name with the same
+    # text as MAIN is the one that gets skipped, not MAIN itself).
+    out = [("MAIN", names[main_idx][1])]
+    seen = {names[main_idx][1].upper()}
+    for i, (t, text) in enumerate(names):
+        if i == main_idx or text.upper() in seen:
+            continue
+        seen.add(text.upper())
+        out.append((t, text))
+    return out
 
 
 def parse() -> int:
@@ -139,17 +153,18 @@ def parse() -> int:
                         if abn_el is None or not (abn_el.text or "").strip():
                             el.clear()
                             continue
-                        w.writerow([
-                            abn_el.text.strip(),
-                            abn_el.get("status"),
-                            abn_el.get("ABNStatusFromDate"),
-                            el.findtext("EntityType/EntityTypeInd"),
-                            el.findtext("EntityType/EntityTypeText"),
-                            record_name(el),
-                            el.findtext(".//AddressDetails/State"),
-                            el.findtext(".//AddressDetails/Postcode"),
-                        ])
-                        written += 1
+                        abn = abn_el.text.strip()
+                        status = abn_el.get("status")
+                        status_from = abn_el.get("ABNStatusFromDate")
+                        type_ind = el.findtext("EntityType/EntityTypeInd")
+                        type_text = el.findtext("EntityType/EntityTypeText")
+                        state = el.findtext(".//AddressDetails/State")
+                        postcode = el.findtext(".//AddressDetails/Postcode")
+                        # One CSV row per name the entity is known by.
+                        for name_type, name in record_names(el):
+                            w.writerow([abn, status, status_from, type_ind,
+                                        type_text, name, name_type, state, postcode])
+                            written += 1
                         el.clear()
                 log.info("  %s -> %s rows so far [%.0fs]", info.filename,
                          f"{written:,}", time.time() - t0)
@@ -189,7 +204,7 @@ def load() -> None:
             CREATE TABLE IF NOT EXISTS raw_abr_entity (
                 abn STRING, abn_status STRING, abn_status_from_date STRING,
                 entity_type_ind STRING, entity_type_text STRING,
-                entity_name STRING, state STRING, postcode STRING,
+                entity_name STRING, name_type STRING, state STRING, postcode STRING,
                 _loaded_at TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
                 _source_file STRING
             )
@@ -218,10 +233,10 @@ def load() -> None:
         cur.execute(f"""
             COPY INTO raw_abr_entity_load (
                 abn, abn_status, abn_status_from_date, entity_type_ind,
-                entity_type_text, entity_name, state, postcode, _source_file
+                entity_type_text, entity_name, name_type, state, postcode, _source_file
             )
             FROM (
-                SELECT $1,$2,$3,$4,$5,$6,$7,$8, METADATA$FILENAME
+                SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9, METADATA$FILENAME
                 FROM @abr_stage/{CSV_OUT.name}.gz
             )
             FILE_FORMAT = (FORMAT_NAME = ff_csv_austender)

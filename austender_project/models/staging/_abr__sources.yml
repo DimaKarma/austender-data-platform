@@ -13,10 +13,14 @@ sources:
       Licence: Creative Commons Attribution 3.0 Australia.
     tables:
       - name: raw_abr_entity
-        description: "One row per registered ABN (~20.4M), active and cancelled."
+        description: "One row per (ABN, name) — every name each of the ~20.4M ABNs
+          is known by (main, trading, other), active and cancelled."
         columns:
           - name: abn
             description: "The 11-digit ABN — the join key back to supplierabn."
+          - name: name_type
+            description: "MAIN (canonical), TRD (trading), OTN (other), etc.
+              stg_abr_entity keeps MAIN; stg_abr_names keeps all."
           - name: abn_status
             description: "ACT or CAN. Cancelled ABNs are included and matter here:
               37% of the ABNs in these 1999-2011 contracts have since been

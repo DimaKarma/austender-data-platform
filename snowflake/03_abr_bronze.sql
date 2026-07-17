@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS raw_abr_entity (
     abn_status_from_date STRING,
     entity_type_ind      STRING,   -- e.g. PRV, CGE, IND
     entity_type_text     STRING,   -- e.g. 'Commonwealth Government Entity'
-    entity_name          STRING,   -- registered main name
+    entity_name          STRING,   -- one of the entity's names (see name_type)
+    name_type            STRING,   -- MAIN (canonical) / TRD (trading) / OTN / ...
     state                STRING,
     postcode             STRING,
     -- audit columns, same convention as raw_contract_data

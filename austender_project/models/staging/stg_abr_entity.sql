@@ -1,14 +1,19 @@
 /*
-  stg_abr_entity — staging over the ABR bulk extract.
-  Renames, cleans strings, types the date. No business logic.
+  stg_abr_entity — one row per ABN with its canonical (MAIN) name and attributes.
 
-  Materialized as a table rather than a view: the source is ~20.4M rows and every
-  build of dim_supplier joins it, so paying once beats scanning Bronze each time.
+  Bronze now holds several rows per ABN (one per name — main, trading, other), so
+  this filters to name_type = 'MAIN' to keep exactly one row per ABN. That keeps
+  the dim_supplier enrichment join at one-to-one; the alternate names are exposed
+  separately by stg_abr_names for matching. Guarded with qualify in case a record
+  ever yields more than one MAIN.
+
+  Materialized as a table: dim_supplier joins it every build.
 */
 {{ config(materialized='table') }}
 
 with source as (
     select * from {{ source('abr_bronze', 'raw_abr_entity') }}
+    where name_type = 'MAIN'
 ),
 
 renamed as (
@@ -32,6 +37,7 @@ renamed as (
         _source_file                                    as source_file
     from source
     where abn is not null
+    qualify row_number() over (partition by abn order by entity_name) = 1
 )
 
 select * from renamed

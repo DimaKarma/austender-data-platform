@@ -8,10 +8,11 @@
   never be a guess between candidates. Restricted to names our no-ABN contracts
   actually use, so it stays small and relevant.
 
-  Limitation, measured: the register table holds one (main) name per ABN, so this
-  matches ~13.6% of distinct no-ABN names (1,913 of 14,075). Loading the register's
-  trading and other names would roughly double that — a bounded next step, not a
-  reason to fake the rest.
+  Matches against ALL of the register's names — main, trading and other (via
+  stg_abr_names) — so a contract that used a supplier's trading name still
+  resolves. A normalized name is still required to map to exactly one ABN across
+  every name in the register; sharing a trading name makes it ambiguous and drops
+  it, same discipline as before.
 
   The result is only ever surfaced as a *suggested* ABN, flagged
   abn_source = 'abr_name_match' in dim_supplier, never merged into a real
@@ -27,8 +28,8 @@ with contract_names as (
 ),
 
 register as (
-    select {{ normalize_name('entity_name') }} as normalized_name, abn
-    from {{ ref('stg_abr_entity') }}
+    select distinct {{ normalize_name('entity_name') }} as normalized_name, abn
+    from {{ ref('stg_abr_names') }}
     where entity_name is not null
 ),
 
