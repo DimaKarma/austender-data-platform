@@ -67,7 +67,7 @@ select
     amendment_no,
 
     -- foreign keys to the dimensions
-    {{ dbt_utils.generate_surrogate_key(['supplier_business_key']) }}         as supplier_key,
+    {{ dbt_utils.generate_surrogate_key(['supplier_name', 'supplier_abn']) }} as supplier_key,
     {{ dbt_utils.generate_surrogate_key(['agency_name', 'agency_abn']) }}     as agency_key,
     {{ dbt_utils.generate_surrogate_key(['category_name', 'category_unspsc']) }} as category_key,
     cast(to_char(publish_date, 'YYYYMMDD') as integer)                        as publish_date_key,
