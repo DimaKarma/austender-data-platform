@@ -70,3 +70,9 @@ models:
               arguments:
                 to: ref('dim_date')
                 field: date_key
+      - name: loaded_at
+        description: "Ingestion timestamp carried from Silver. Drives the
+          incremental high-water mark; must never be null or the row could not
+          be picked up by a later run."
+        data_tests:
+          - not_null

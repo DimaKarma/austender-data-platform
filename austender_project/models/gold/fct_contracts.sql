@@ -1,8 +1,7 @@
 /*
   fct_contracts — the "Contract" fact table.
   Grain: one row = one contract_id.
-  Incremental: re-runs append only newly published contracts, demonstrating
-  dbt's incremental pattern.
+  Incremental: re-runs process only rows ingested since the last build.
   Foreign keys to every dimension use surrogate keys built with the same
   formula as the dim models.
 */
@@ -16,8 +15,20 @@ with contracts as (
     select * from {{ ref('slv_contracts') }}
 
     {% if is_incremental() %}
-      -- only contracts newer than the latest one already loaded
-      where publish_date > (select max(publish_date) from {{ this }})
+      -- High-water mark on the ingestion timestamp, NOT on publish_date.
+      --
+      -- Filtering by a business date drops two classes of rows for good:
+      --   * late arrivals — a contract published before the current maximum but
+      --     ingested afterwards is never seen again;
+      --   * amendments — an updated contract keeps its original publish_date, so
+      --     it can never clear the watermark. That silently defeats
+      --     unique_key + merge, which exist precisely to apply such updates:
+      --     the merge would only ever insert, never update.
+      --
+      -- loaded_at is assigned once per COPY statement (CURRENT_TIMESTAMP is
+      -- statement-scoped in Snowflake), so a load batch shares one value and a
+      -- strict > either takes a whole new batch or nothing — never half of one.
+      where loaded_at > (select max(loaded_at) from {{ this }})
     {% endif %}
 )
 
@@ -39,5 +50,8 @@ select
     procurement_method,
     publish_date,
     contract_start_date,
-    contract_end_date
+    contract_end_date,
+
+    -- audit: carried so the incremental predicate above has a watermark to read
+    loaded_at
 from contracts
