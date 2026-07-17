@@ -92,6 +92,11 @@ GRANT SELECT ON FUTURE VIEWS  IN SCHEMA austender_db.gold TO ROLE austender_anal
 --     bootstrap.py substitutes this placeholder automatically.
 GRANT ROLE austender_de      TO USER YOUR_USERNAME;
 GRANT ROLE austender_analyst TO USER YOUR_USERNAME;
+-- austender_ci is what GitHub Actions connects as (dbt build --target ci).
+-- In a production account CI would authenticate as its own service user; here
+-- the workflow reuses these credentials, so the role must be granted to them —
+-- without this, `dbt build --target ci` cannot connect at all.
+GRANT ROLE austender_ci      TO USER YOUR_USERNAME;
 
 -- Smoke check
 USE ROLE austender_de;
