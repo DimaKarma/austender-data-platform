@@ -51,7 +51,9 @@ Med-Pet/
 │   ├── dbt_project.yml
 │   ├── packages.yml                 # dbt_utils
 │   ├── profiles.example.yml
-│   ├── macros/                      # generate_schema_name, clean_string
+│   ├── macros/                      # generate_schema_name, clean_string,
+│   │                                #   contract_amendment (-A<n> parsing)
+│   ├── tests/                       # assert_gold_matches_silver (drift guard)
 │   └── models/
 │       ├── staging/                 # _bronze__sources.yml, stg_contracts
 │       ├── silver/                  # slv_contracts (+ tests)
@@ -136,7 +138,40 @@ A real analyst user, granted only `austender_analyst`, is restricted with or
 without this setting.
 
 ## Data quality notes
-Profiling the source showed that `procurementmethod` is empty in ~93% of rows and
-`supplierabn` in ~30%. In Silver those NULLs become `'Unknown'` / `'UNKNOWN'`,
-rows without a contract value are filtered out, and duplicates on `cnid` are
-collapsed to the most recent load.
+
+Figures below are measured against the full 241,164-row extract, not estimated.
+
+| Field | Empty | Handling |
+|---|---|---|
+| `procurementmethod` | 62,961 (26.11%) | Silver → `'Unknown'` |
+| `supplierabn` | 20,021 (8.30%) NULL, plus 6,693 (2.78%) holding `'0'` | Silver → `'UNKNOWN'` |
+| `agencyabn` | 1,219 (0.51%) | Silver → `'UNKNOWN'` |
+| `categoryunspsc` | 92 (0.04%) | Silver → `'UNKNOWN'` |
+| `description` | 56 (0.02%) — 48 NULL plus 8 whitespace-only | left NULL |
+
+Rows without a contract value are filtered out in Silver, and duplicate notices
+are collapsed to the most recent load.
+
+**`supplierabn = '0'` is a sentinel, not a number.** Those 6,693 rows are exactly
+the rows whose ABN is not 11 digits, and they are foreign suppliers with no
+Australian Business Number (`PANTA RHEI GMBH`, `PT. MITRA KARYA KREASI`). Only
+suppliers carry it — `agencyabn` never does, since every agency is Australian.
+
+**Amendments are separate notices, and they double-count.** AusTender publishes an
+amendment as its own contract notice suffixed `-A<n>`: contract `413292` appears
+three times, at 375,000 → 500,000 → 240,000. 12,465 rows (5.17%) are amendments.
+Counting each notice as a contract overstated total spend by **$11.17B (5.8%)** —
+$202.18B against the correct $191.01B. Silver keeps every notice at source grain;
+the Gold fact collapses each chain to its latest amendment, so `fct_contracts`
+carries one row per contract with `source_notice_id` and `amendment_no` recording
+which version it is.
+
+**`sourceurl` carries no information.** It is exactly
+`https://www.tenders.gov.au/?event=public.advancedsearch.keyword&keyword=CN` +
+`cnid` for all 241,164 rows — a search link derived from the id, not a link to the
+notice, so it is not modelled downstream.
+
+Two known caveats, deliberately not resolved: 9 contracts carry a placeholder
+value of `1`, and agency names appear in punctuation variants
+(`Department of Infrastructure, Transport` vs `... Transport`), which inflates
+`dim_agency`.

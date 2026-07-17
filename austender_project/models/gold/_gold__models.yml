@@ -34,11 +34,25 @@ models:
         data_tests: [not_null, unique]
 
   - name: fct_contracts
-    description: "The \"Contract\" fact. Grain: one contract_id."
+    description: >
+      The "Contract" fact. Grain: one row per contract, holding its latest
+      version. AusTender publishes amendments as separate notices
+      (413292, 413292-A1, 413292-A2); each chain is collapsed to its latest
+      amendment, since carrying every notice triple-counts amended contracts.
     columns:
       - name: contract_id
-        description: "Degenerate dimension / primary key of the fact."
+        description: "The contract (base notice id) — degenerate dimension and PK
+          of the fact. Not the notice id: see source_notice_id."
         data_tests: [not_null, unique]
+      - name: source_notice_id
+        description: "The AusTender notice this row is sourced from, e.g.
+          413292-A2. Unique, since one notice can win for only one contract."
+        data_tests: [not_null, unique]
+      - name: amendment_no
+        description: "How many amendments deep this version is; 0 for a contract
+          that was never amended."
+        data_tests:
+          - not_null
       - name: contract_value
         description: "Contract value."
         data_tests:

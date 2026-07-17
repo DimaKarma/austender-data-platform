@@ -1,9 +1,18 @@
 /*
   fct_contracts — the "Contract" fact table.
-  Grain: one row = one contract_id.
-  Incremental: re-runs process only rows ingested since the last build.
-  Foreign keys to every dimension use surrogate keys built with the same
-  formula as the dim models.
+
+  Grain: one row per contract, holding its latest version.
+
+  AusTender publishes amendments as separate notices (413292, 413292-A1,
+  413292-A2 — see macros/contract_amendment.sql). Carrying each notice as its
+  own fact row triple-counts amended contracts: measured against this extract,
+  that overstated total spend by $11.17B (5.8%). The chain is therefore collapsed
+  to its latest amendment, which is the contract as it currently stands.
+
+  Silver deliberately keeps every notice at source grain; this is where the
+  business grain is chosen.
+
+  Incremental: re-runs process only contracts touched since the last build.
 */
 {{ config(
     materialized='incremental',
@@ -11,30 +20,51 @@
     incremental_strategy='merge'
 ) }}
 
-with contracts as (
-    select * from {{ ref('slv_contracts') }}
+with versions as (
+    select
+        s.*,
+        {{ base_contract_id('s.contract_id') }} as base_contract_id,
+        {{ amendment_no('s.contract_id') }}     as amendment_no
+    from {{ ref('slv_contracts') }} s
 
     {% if is_incremental() %}
-      -- High-water mark on the ingestion timestamp, NOT on publish_date.
+      -- Rank against *every* known version of a touched contract, not just the
+      -- new arrivals: an amendment ingested late must still be compared with the
+      -- versions already in the fact, or it could win on its own and overwrite a
+      -- newer one.
       --
-      -- Filtering by a business date drops two classes of rows for good:
-      --   * late arrivals — a contract published before the current maximum but
-      --     ingested afterwards is never seen again;
-      --   * amendments — an updated contract keeps its original publish_date, so
-      --     it can never clear the watermark. That silently defeats
-      --     unique_key + merge, which exist precisely to apply such updates:
-      --     the merge would only ever insert, never update.
-      --
-      -- loaded_at is assigned once per COPY statement (CURRENT_TIMESTAMP is
-      -- statement-scoped in Snowflake), so a load batch shares one value and a
-      -- strict > either takes a whole new batch or nothing — never half of one.
-      where loaded_at > (select max(loaded_at) from {{ this }})
+      -- The watermark reads loaded_at (ingestion time), never publish_date: an
+      -- amendment keeps the original's publish_date, so a business-date filter
+      -- could never let one through.
+      where {{ base_contract_id('s.contract_id') }} in (
+          select distinct {{ base_contract_id('contract_id') }}
+          from {{ ref('slv_contracts') }}
+          where loaded_at > (select max(loaded_at) from {{ this }})
+      )
     {% endif %}
+),
+
+latest as (
+    select
+        *,
+        -- Advance the watermark using the whole chain, not the winning row: when
+        -- a late amendment loses the ranking, the fact must still record that it
+        -- was seen, or the same rows would be re-selected on every future run.
+        max(loaded_at) over (partition by base_contract_id) as chain_loaded_at
+    from versions
+    qualify row_number() over (
+        partition by base_contract_id
+        order by amendment_no desc, loaded_at desc
+    ) = 1
 )
 
 select
-    -- degenerate dimension (the contract key carried on the fact)
-    contract_id,
+    -- degenerate dimension: the contract, not the notice
+    base_contract_id                                                          as contract_id,
+
+    -- which notice this row is sourced from, and how many amendments deep it is
+    contract_id                                                               as source_notice_id,
+    amendment_no,
 
     -- foreign keys to the dimensions
     {{ dbt_utils.generate_surrogate_key(['supplier_name', 'supplier_abn']) }} as supplier_key,
@@ -52,6 +82,6 @@ select
     contract_start_date,
     contract_end_date,
 
-    -- audit: carried so the incremental predicate above has a watermark to read
-    loaded_at
-from contracts
+    -- audit: the watermark the incremental predicate above reads
+    chain_loaded_at                                                           as loaded_at
+from latest
