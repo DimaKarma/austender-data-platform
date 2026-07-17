@@ -14,6 +14,9 @@ Medallion Architecture, RBAC, CI/CD**.
 - **RBAC** — functional roles (`de` / `analyst` / `ci`), a hierarchy under `SYSADMIN`,
   and least privilege (the analyst can only see the Gold layer).
 - **Medallion Architecture** — three layers: **Bronze** (raw) → **Silver** (cleansed) → **Gold** (star schema).
+- **SCD2 history** — a dbt snapshot tracks the supplier dimension's
+  register-sourced attributes over time (an ABN going `ACT` → `CAN`), so a rename
+  or a cancellation is preserved instead of overwritten on rebuild.
 - **dbt Core** — sources + freshness, staging/silver/gold models, surrogate keys,
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
 - **CI/CD** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
@@ -67,6 +70,7 @@ Med-Pet/
 │   │                                #   contract_amendment (-A<n> parsing)
 │   ├── tests/                       # assert_gold_matches_silver (drift guard)
 │   ├── seeds/                       # known_non_suppliers (curated: FMS, panels)
+│   ├── snapshots/                   # supplier_history (SCD2)
 │   └── models/
 │       ├── staging/                 # _bronze__sources.yml, stg_contracts, stg_abr_entity
 │       ├── silver/                  # slv_contracts (+ tests)
@@ -308,6 +312,27 @@ two registered entities.
 > © Australian Business Register, licensed under
 > [CC BY 3.0 AU](https://creativecommons.org/licenses/by/3.0/au/). The data is
 > used as published; the Registrar does not endorse this project.
+
+## History: SCD2 on the supplier dimension
+
+Dimensions are rebuilt each run, so a change to a supplier's details would be
+overwritten and its history lost. The `supplier_history` dbt snapshot
+(`snapshots/supplier_history.sql`) prevents that: it keeps an SCD2 record —
+`valid_from` / `valid_to` / `is_current` — of the register-sourced attributes
+(`abr_abn_status`, `abr_entity_name`, entity type, placeholder flag), which are
+the genuinely slowly-changing part since the ABR is refreshed weekly upstream. So
+"when did this supplier's ABN get cancelled?" is answerable; `rpt_supplier_history`
+exposes it in the mart. Verified by simulating an `ACT → CAN` cancellation: the
+snapshot closed the old version and opened a new current one.
+
+**Why supplier and not agency.** The backlog imagined SCD2 for agency renames
+(Centrelink → Human Services). The data does not support that: of the 14 agency
+ABNs carrying more than one name, **13 have overlapping date spans** — they are
+distinct reporting units sharing an ABN *concurrently* (Centrelink, Human Services
+and Agriculture all ran under one ABN across 2003-2011), not one entity renamed
+over time. SCD2 keyed on that ABN would fabricate a timeline, so agency name is
+not treated as a slowly-changing attribute. The register attributes, which do
+change on a schedule, are.
 
 **Not every fake supplier has an ABN to check.** 26,629 contracts worth **$26.84B
 (14.1% of spend)** name a supplier with no ABN at all, so neither the register nor

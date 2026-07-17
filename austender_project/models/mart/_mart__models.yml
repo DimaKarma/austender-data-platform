@@ -32,3 +32,13 @@ models:
     columns:
       - name: total_spend
         data_tests: [not_null]
+
+  - name: rpt_supplier_history
+    description: >
+      SCD2 history of the supplier dimension (from the supplier_history
+      snapshot). One row per version of a supplier's register-sourced attributes;
+      is_current marks the live version, valid_from/valid_to bound each. Empty
+      until `dbt snapshot` has run.
+    columns:
+      - name: is_current
+        data_tests: [not_null]
