@@ -55,6 +55,7 @@ ENV_FILE = ROOT / "ingestion" / ".env"
 SQL_INFRA = ROOT / "snowflake" / "01_setup_infra_rbac.sql"
 SQL_BRONZE = ROOT / "snowflake" / "02_bronze_table_stage.sql"
 SQL_ABR_BRONZE = ROOT / "snowflake" / "03_abr_bronze.sql"
+SQL_RESOURCE_MONITOR = ROOT / "snowflake" / "04_resource_monitor.sql"
 DBT_DIR = ROOT / "austender_project"
 LOADER = ROOT / "ingestion" / "load_to_bronze.py"
 ABR_LOADER = ROOT / "ingestion" / "load_abr_to_bronze.py"
@@ -107,7 +108,7 @@ def load_env() -> dict[str, str]:
 
 
 def preflight(env: dict[str, str], csv_path: Path, need_csv: bool) -> None:
-    for f in (SQL_INFRA, SQL_BRONZE, SQL_ABR_BRONZE):
+    for f in (SQL_INFRA, SQL_BRONZE, SQL_ABR_BRONZE, SQL_RESOURCE_MONITOR):
         if not f.exists():
             raise BootstrapError(f"SQL script not found: {f.relative_to(ROOT)}")
     if need_csv and not csv_path.exists():
@@ -157,6 +158,8 @@ def step_infra(env: dict[str, str]) -> None:
     # (AUSTENDER_DE) does not exist yet — connect as ACCOUNTADMIN.
     run_sql_file(env, SQL_INFRA, role="ACCOUNTADMIN",
                  substitutions={"YOUR_USERNAME": env["SNOWFLAKE_USER"]})
+    # Credit guard on the warehouses — also ACCOUNTADMIN.
+    run_sql_file(env, SQL_RESOURCE_MONITOR, role="ACCOUNTADMIN")
 
 
 def step_bronze(env: dict[str, str]) -> None:
