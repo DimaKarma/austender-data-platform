@@ -72,6 +72,10 @@ GRANT ALL ON FUTURE VIEWS  IN DATABASE austender_db TO ROLE austender_de;
 -- 3.4 Grants for CI (same profile, its own warehouse) -----------------
 GRANT USAGE ON WAREHOUSE austender_ci_wh TO ROLE austender_ci;
 GRANT USAGE ON DATABASE  austender_db TO ROLE austender_ci;
+-- CI builds into its own CI_SILVER/CI_GOLD/CI_MART schemas (see the
+-- generate_schema_name macro) so a PR run never rebuilds the BI-facing GOLD/MART.
+-- It creates them on the fly, so it needs CREATE SCHEMA on the database.
+GRANT CREATE SCHEMA ON DATABASE austender_db TO ROLE austender_ci;
 GRANT USAGE ON ALL SCHEMAS IN DATABASE austender_db TO ROLE austender_ci;
 GRANT ALL ON SCHEMA austender_db.bronze TO ROLE austender_ci;
 GRANT ALL ON SCHEMA austender_db.silver TO ROLE austender_ci;

@@ -16,7 +16,8 @@ Medallion Architecture, RBAC, CI/CD**.
 - **Medallion Architecture** — three layers: **Bronze** (raw) → **Silver** (cleansed) → **Gold** (star schema).
 - **dbt Core** — sources + freshness, staging/silver/gold models, surrogate keys,
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
-- **CI/CD** — GitHub Actions: `dbt build` (run + test) on every PR.
+- **CI/CD** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
+  `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI reads.
 - **ELT automation** — a Python loader instead of importing the CSV by hand.
 
 ## Architecture
@@ -34,6 +35,11 @@ Medallion Architecture, RBAC, CI/CD**.
                  └────────────────────────────────────────────────────────┘
         Python loader              dbt (staging→silver)     dbt (gold star schema)
 ```
+
+CI builds the same models under `CI_SILVER`/`CI_GOLD`/`CI_MART` (the
+`generate_schema_name` macro prefixes `CI_` on the `ci` target), reading the
+shared BRONZE sources but writing throwaway copies, so a PR run in progress cannot
+hand an analyst a half-built table.
 
 The Gold model is a **star**: the `fct_contracts` fact (grain = one contract)
 plus the `dim_supplier`, `dim_agency`, `dim_category` and `dim_date` dimensions,

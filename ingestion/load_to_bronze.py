@@ -97,10 +97,6 @@ def load_csv_to_bronze(csv_path: Path, truncate: bool = True) -> None:
         """)
         cur.execute("CREATE STAGE IF NOT EXISTS austender_stage FILE_FORMAT=ff_csv_austender")
 
-        if truncate:
-            log.info("TRUNCATE raw_contract_data (idempotent reload)")
-            cur.execute("TRUNCATE TABLE raw_contract_data")
-
         # 2. PUT: upload the local file to the internal stage (auto-compressed).
         posix = csv_path.resolve().as_posix()
         log.info("PUT %s -> @austender_stage ...", csv_path.name)
@@ -109,11 +105,22 @@ def load_csv_to_bronze(csv_path: Path, truncate: bool = True) -> None:
             "AUTO_COMPRESS=TRUE OVERWRITE=TRUE PARALLEL=4"
         )
 
-        # 3. COPY INTO: stage -> bronze. Columns are listed explicitly and
-        #    _source_file is filled from METADATA$FILENAME.
-        log.info("COPY INTO raw_contract_data ...")
+        # 3. COPY INTO a scratch table first, then swap.
+        #
+        #    Never TRUNCATE the live table before COPY: with ON_ERROR aborting a
+        #    bad load (see below), a truncate-then-failed-copy would leave bronze
+        #    EMPTY — the failure mode would destroy data instead of preserving it.
+        #    So COPY into an empty clone; the live table only changes once COPY
+        #    has fully succeeded.
+        #
+        #    ON_ERROR = 'ABORT_STATEMENT', not 'CONTINUE': Bronze must be a
+        #    faithful copy of the source. CONTINUE would skip malformed rows
+        #    silently, so schema drift would shrink the dataset with no signal.
+        log.info("COPY INTO scratch table raw_contract_data_load ...")
+        cur.execute("CREATE OR REPLACE TEMPORARY TABLE raw_contract_data_load "
+                    "LIKE raw_contract_data")
         cur.execute(f"""
-            COPY INTO raw_contract_data (
+            COPY INTO raw_contract_data_load (
                 agencyname, value, suppliername, description, publishdate,
                 contractstart, contractend, procurementmethod, category,
                 agencyabn, supplierabn, categoryunspsc, cnid, supplierid,
@@ -125,13 +132,36 @@ def load_csv_to_bronze(csv_path: Path, truncate: bool = True) -> None:
                 FROM @austender_stage/{csv_path.name}.gz
             )
             FILE_FORMAT = (FORMAT_NAME = ff_csv_austender)
-            ON_ERROR = 'CONTINUE'
+            ON_ERROR = 'ABORT_STATEMENT'
         """)
+        # COPY result columns: file, status, rows_parsed, rows_loaded, ...
         for row in cur.fetchall():
             log.info("COPY result: %s", row)
+            parsed, loaded = row[2], row[3]
+            if parsed != loaded:
+                # ABORT_STATEMENT should already have raised; belt and suspenders.
+                log.error("COPY loaded %s of %s parsed rows — aborting.", loaded, parsed)
+                sys.exit(1)
+
+        # 4. Publish atomically: only reached because COPY succeeded. When
+        #    truncate is off (append mode) just move the new rows across.
+        if truncate:
+            log.info("Publishing: replace raw_contract_data with the loaded rows")
+            cur.execute("BEGIN")
+            cur.execute("TRUNCATE TABLE raw_contract_data")
+            cur.execute("INSERT INTO raw_contract_data SELECT * FROM raw_contract_data_load")
+            cur.execute("COMMIT")
+        else:
+            log.info("Publishing (append mode): add the loaded rows")
+            cur.execute("INSERT INTO raw_contract_data SELECT * FROM raw_contract_data_load")
 
         cnt = cur.execute("SELECT COUNT(*) FROM raw_contract_data").fetchone()[0]
         log.info("Success: bronze.raw_contract_data now holds %s rows.", f"{cnt:,}")
+    except snowflake.connector.errors.ProgrammingError as e:
+        # Almost always a COPY that aborted on a malformed row. The live table was
+        # not touched (COPY targets a scratch table), so report and exit cleanly.
+        log.error("Load failed, bronze left unchanged: %s", str(e).splitlines()[0])
+        sys.exit(1)
     finally:
         cur.close()
         conn.close()

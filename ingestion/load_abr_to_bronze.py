@@ -204,17 +204,19 @@ def load() -> None:
         """)
         cur.execute("CREATE STAGE IF NOT EXISTS abr_stage FILE_FORMAT=ff_csv_austender")
 
-        log.info("TRUNCATE raw_abr_entity (idempotent reload)")
-        cur.execute("TRUNCATE TABLE raw_abr_entity")
-
         posix = CSV_OUT.resolve().as_posix()
         log.info("PUT %s -> @abr_stage ...", CSV_OUT.name)
         cur.execute(f"PUT 'file://{posix}' @abr_stage "
                     "AUTO_COMPRESS=TRUE OVERWRITE=TRUE PARALLEL=4")
 
-        log.info("COPY INTO raw_abr_entity ...")
+        # COPY into a scratch table first, then swap — never truncate the live
+        # table before a COPY that can abort, or a failed load would leave bronze
+        # empty. Same safe-replace pattern as the contracts loader.
+        log.info("COPY INTO scratch table raw_abr_entity_load ...")
+        cur.execute("CREATE OR REPLACE TEMPORARY TABLE raw_abr_entity_load "
+                    "LIKE raw_abr_entity")
         cur.execute(f"""
-            COPY INTO raw_abr_entity (
+            COPY INTO raw_abr_entity_load (
                 abn, abn_status, abn_status_from_date, entity_type_ind,
                 entity_type_text, entity_name, state, postcode, _source_file
             )
@@ -227,6 +229,16 @@ def load() -> None:
         """)
         for row in cur.fetchall():
             log.info("COPY result: %s", row)
+            parsed, loaded = row[2], row[3]
+            if parsed != loaded:
+                log.error("COPY loaded %s of %s parsed rows — aborting.", loaded, parsed)
+                sys.exit(1)
+
+        log.info("Publishing: replace raw_abr_entity with the loaded rows")
+        cur.execute("BEGIN")
+        cur.execute("TRUNCATE TABLE raw_abr_entity")
+        cur.execute("INSERT INTO raw_abr_entity SELECT * FROM raw_abr_entity_load")
+        cur.execute("COMMIT")
         n = cur.execute("SELECT COUNT(*) FROM raw_abr_entity").fetchone()[0]
         log.info("Success: bronze.raw_abr_entity now holds %s rows.", f"{n:,}")
     finally:
