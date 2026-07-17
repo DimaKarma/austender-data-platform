@@ -2,13 +2,38 @@ version: 2
 
 models:
   - name: dim_supplier
-    description: "The \"Supplier\" dimension."
+    description: >
+      The "Supplier" dimension, grain (supplier_name, supplier_abn) as stated on
+      the contract. The abr_* columns carry what the Australian Business Register
+      says about the stated ABN, so a stated ABN that is not the supplier's can be
+      seen rather than silently trusted.
     columns:
       - name: supplier_key
         description: "Surrogate PK."
         data_tests: [not_null, unique]
       - name: supplier_name
         data_tests: [not_null]
+      - name: abr_entity_name
+        description: "The entity the register says the stated ABN belongs to.
+          NULL when the supplier has no ABN, or the ABN was never issued."
+      - name: abr_entity_type
+        description: "Registered entity type in words, e.g. 'Australian Private
+          Company', 'Commonwealth Government Entity'."
+      - name: abr_abn_status
+        description: "ACT or CAN in the register. 37% of these ABNs have been
+          cancelled since the contracts were published."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['ACT', 'CAN']
+              config:
+                severity: error
+      - name: supplier_abn_is_placeholder
+        description: "True when the stated ABN belongs to a government body that
+          is not this supplier — an agency's own ABN standing in for a real one.
+          Exclude these rows before aggregating by ABN."
+        data_tests:
+          - not_null
 
   - name: dim_agency
     description: "The \"Government buyer\" dimension."

@@ -54,8 +54,10 @@ ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / "ingestion" / ".env"
 SQL_INFRA = ROOT / "snowflake" / "01_setup_infra_rbac.sql"
 SQL_BRONZE = ROOT / "snowflake" / "02_bronze_table_stage.sql"
+SQL_ABR_BRONZE = ROOT / "snowflake" / "03_abr_bronze.sql"
 DBT_DIR = ROOT / "austender_project"
 LOADER = ROOT / "ingestion" / "load_to_bronze.py"
+ABR_LOADER = ROOT / "ingestion" / "load_abr_to_bronze.py"
 DEFAULT_CSV = ROOT / "AustralianFederalContracts.csv"
 
 # Snowflake username: letters/digits/underscore. Validated before being
@@ -105,7 +107,7 @@ def load_env() -> dict[str, str]:
 
 
 def preflight(env: dict[str, str], csv_path: Path, need_csv: bool) -> None:
-    for f in (SQL_INFRA, SQL_BRONZE):
+    for f in (SQL_INFRA, SQL_BRONZE, SQL_ABR_BRONZE):
         if not f.exists():
             raise BootstrapError(f"SQL script not found: {f.relative_to(ROOT)}")
     if need_csv and not csv_path.exists():
@@ -158,7 +160,11 @@ def step_infra(env: dict[str, str]) -> None:
 
 
 def step_bronze(env: dict[str, str]) -> None:
-    run_sql_file(env, SQL_BRONZE, role=env.get("SNOWFLAKE_ROLE") or "AUSTENDER_DE")
+    role = env.get("SNOWFLAKE_ROLE") or "AUSTENDER_DE"
+    run_sql_file(env, SQL_BRONZE, role=role)
+    # Created even when the ABR is not being loaded: stg_abr_entity depends on
+    # the source unconditionally, so an empty table keeps dbt build working.
+    run_sql_file(env, SQL_ABR_BRONZE, role=role)
 
 
 # --- 4. dbt profile ---------------------------------------------------
@@ -219,6 +225,13 @@ def step_load(env: dict[str, str], csv_path: Path) -> None:
             cwd=LOADER.parent, env=env)
 
 
+def step_load_abr(env: dict[str, str]) -> None:
+    """Load the ABR reference data. Skipped by default: it downloads ~944MB and
+    streams 12.5GB of XML, so a routine rebuild should not pay for it. The
+    archives and parsed CSV are reused when already on disk."""
+    run_cmd([sys.executable, str(ABR_LOADER)], cwd=ABR_LOADER.parent, env=env)
+
+
 def dbt_command() -> list[str]:
     """Locate dbt for the interpreter running this script.
 
@@ -255,11 +268,15 @@ def main() -> None:
                    help="Infrastructure + RBAC + bronze DDL only")
     p.add_argument("--skip-load", action="store_true", help="Skip loading the CSV into bronze")
     p.add_argument("--skip-dbt", action="store_true", help="Skip dbt deps/build")
+    p.add_argument("--with-abr", action="store_true",
+                   help="Also (re)load the ABR reference data — downloads ~944MB "
+                        "and streams 12.5GB of XML; reuses whatever is on disk")
     args = p.parse_args()
 
     csv_path = Path(args.file)
     do_load = not (args.only_sql or args.skip_load)
     do_dbt = not (args.only_sql or args.skip_dbt)
+    do_abr = args.with_abr and not args.only_sql
 
     try:
         env = load_env()
@@ -272,6 +289,8 @@ def main() -> None:
             step_dbt_profile()
         if do_load:
             step_load(env, csv_path)
+        if do_abr:
+            step_load_abr(env)
         if do_dbt:
             step_dbt(env)
 

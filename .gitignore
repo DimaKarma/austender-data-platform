@@ -21,6 +21,9 @@ venv/
 *.csv
 *.csv.gz
 
+# ABR bulk extract: ~944MB of archives and a ~2.6GB parsed CSV, re-downloadable
+ingestion/abr_data/
+
 # reference material / source documents — not part of the pipeline
 *.pdf
 

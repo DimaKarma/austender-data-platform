@@ -7,6 +7,9 @@ Medallion Architecture, RBAC, CI/CD**.
 
 ## What this project demonstrates
 
+- **Reference-data enrichment** — the Australian Business Register loaded as a
+  second Bronze source (~20.4M ABNs) to check the contracts' supplier ABNs
+  against the authority that issues them.
 - **Snowflake** — warehouse, database, schemas, file format, internal stage, `COPY INTO`.
 - **RBAC** — functional roles (`de` / `analyst` / `ci`), a hierarchy under `SYSADMIN`,
   and least privilege (the analyst can only see the Gold layer).
@@ -46,6 +49,7 @@ Med-Pet/
 │   └── 02_bronze_table_stage.sql    # bronze table, file format, stage
 ├── ingestion/
 │   ├── load_to_bronze.py            # ELT: local CSV → PUT → COPY INTO bronze
+│   ├── load_abr_to_bronze.py        # ABR reference data: download → stream XML → bronze
 │   └── .env.example                 # credentials template (the real .env is not committed)
 ├── austender_project/               # dbt project
 │   ├── dbt_project.yml
@@ -176,11 +180,11 @@ which version it is.
 notice, so it is not modelled downstream.
 
 **ABN is a hint, not an identifier — so the dimensions are keyed on
-`(name, abn)`.** This looks wrong at first glance: 6,942 supplier ABNs appear
-under more than one name, so `dim_supplier` holds 55,698 rows for fewer real
-suppliers, and an analyst counting suppliers overcounts. Keying on the ABN
-instead was tried and reverted, because the ABNs in this extract are not
-trustworthy in either direction:
+`(name, abn)` and the ABN is checked against the register instead.** This looks
+wrong at first glance: 6,942 supplier ABNs appear under more than one name, so
+`dim_supplier` holds 55,698 rows for fewer real suppliers, and an analyst
+counting suppliers overcounts. Keying on the ABN instead was tried and reverted,
+because the ABNs in this extract are not trustworthy in either direction:
 
 - **Some ABNs are shared buckets.** ABN `68706814312` carries **140 unrelated
   names** — `A AND D INTERNATIONAL PTY LTD`, `ACT Public Sector Management`,
@@ -198,9 +202,46 @@ trustworthy in either direction:
 Both failure modes are real, so neither key is safe on its own. `(name, abn)`
 over-splits, which is the recoverable failure: an analyst can group rows, but a
 merged number cannot be unmixed, and over-merging fabricates business facts.
-Resolving supplier identity properly needs an external reference — which is
-exactly the ABR lookup (`abr.business.gov.au`) that the source analysis proposed.
-Out of scope here, and named rather than silently faked.
+
+So rather than guess, the register itself is loaded and joined — see
+**Reference data: the ABR** below.
+
+## Reference data: the ABR
+
+`ingestion/load_abr_to_bronze.py` downloads the **ABN Bulk Extract** (2 archives,
+~944 MB), streams the 12.5 GB of XML inside straight out of the ZIPs without
+extracting, and loads all ~20.4M registered ABNs into `bronze.raw_abr_entity`.
+`stg_abr_entity` types it; `dim_supplier` joins it.
+
+What it buys, measured against this extract:
+
+- **21,068 of the 21,071 stated supplier ABNs exist in the register**; all 21,071
+  pass the ABN checksum, so the three that are absent are well-formed numbers
+  that were never issued.
+- **7,826 (37%) are cancelled.** The extract includes cancelled ABNs, which is
+  what makes 1999-2011 contracts resolvable at all.
+- **752 stated supplier ABNs belong to government entities**, covering 12,998
+  contracts — the Australian Government Solicitor (3,087 contracts under 68
+  different supplier names), Defence (863 under 140), Finance (714 under 76).
+
+`dim_supplier.supplier_abn_is_placeholder` marks the rows where such an ABN is
+demonstrably not the supplier's: **515 ABNs, 1,977 dimension rows, 7,491 fact
+rows**. It is narrower than the 752 on purpose — a government body can legitimately
+be a supplier, so the flag fires only when the registered entity name does not
+match the supplier name. `CITY OF MANDURAH` billing under its own ABN is left
+alone; Defence's ABN sitting under 140 other names is not.
+
+This is also what settles the question the heuristics could not. Defence's ABN is
+a *Commonwealth Government Entity*, so its 140 names are a data-entry artifact;
+`47001407281` is an *Australian Private Company* registered as
+`HAYS SPECIALIST RECRUITMENT (AUSTRALIA)`, so its 77 spellings really are one
+firm. Same symptom, opposite verdict, decided by the register rather than by a
+threshold.
+
+> This project uses data from the [ABN Bulk Extract](https://data.gov.au/data/dataset/abn-bulk-extract),
+> © Australian Business Register, licensed under
+> [CC BY 3.0 AU](https://creativecommons.org/licenses/by/3.0/au/). The data is
+> used as published; the Registrar does not endorse this project.
 
 Two further caveats, deliberately not resolved: 9 contracts carry a placeholder
 value of `1` — surfaced by `assert_no_placeholder_values` as a build warning

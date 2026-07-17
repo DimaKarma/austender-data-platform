@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: abr_bronze
+    database: austender_db
+    schema: bronze
+    description: >
+      Australian Business Register bulk extract, loaded as-is by
+      ingestion/load_abr_to_bronze.py. The register is the authority on what
+      entity an ABN actually belongs to, which is what makes it possible to tell
+      a placeholder supplier ABN from a real vendor's.
+      Source: https://data.gov.au/data/dataset/abn-bulk-extract
+      Licence: Creative Commons Attribution 3.0 Australia.
+    tables:
+      - name: raw_abr_entity
+        description: "One row per registered ABN (~20.4M), active and cancelled."
+        columns:
+          - name: abn
+            description: "The 11-digit ABN — the join key back to supplierabn."
+          - name: abn_status
+            description: "ACT or CAN. Cancelled ABNs are included and matter here:
+              37% of the ABNs in these 1999-2011 contracts have since been
+              cancelled, and would be unresolvable without them."
+          - name: entity_type_text
+            description: "Registered entity type in words, e.g. 'Australian Private
+              Company', 'Commonwealth Government Entity'. The government types are
+              what expose an agency's own ABN sitting in the supplier field."
+          - name: entity_name
+            description: "The entity's registered main name (type MN), or the
+              individual's name for sole traders."
