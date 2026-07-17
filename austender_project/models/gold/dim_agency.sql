@@ -9,7 +9,8 @@ with agencies as (
         agency_name,
         agency_abn
     from {{ ref('slv_contracts') }}
-    where agency_name is not null
+    -- No null filter: Silver coalesces missing names to 'Unknown', so every
+    -- fact row has a matching dimension row.
 )
 
 select

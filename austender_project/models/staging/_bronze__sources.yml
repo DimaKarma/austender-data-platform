@@ -8,8 +8,13 @@ sources:
     tables:
       - name: raw_contract_data
         description: "Raw Australian federal contracts (CSV, 15 columns)."
-        # dbt >= 1.10: loaded_at_field and freshness live under config, not at
-        # the top level of the table.
+        # Freshness keys off _loaded_at (our ingestion time), NOT publishdate.
+        # This is deliberate: publishdate is a per-contract business date frozen
+        # at 2011-11-11, so a freshness check on it would be permanently stale and
+        # meaningless. _loaded_at monitors what is actually actionable for a batch
+        # source — whether ingestion has run recently. A live feed would instead
+        # key off the feed's own extract timestamp.
+        # dbt >= 1.10: loaded_at_field and freshness live under config.
         config:
           loaded_at_field: _loaded_at
           freshness:

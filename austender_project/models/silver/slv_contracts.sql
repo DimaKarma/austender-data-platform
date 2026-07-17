@@ -26,11 +26,18 @@ deduped as (
 cleaned as (
     select
         contract_id,
-        agency_name,
+        -- Coalesce the name fields too, not just the codes. The fact generates a
+        -- surrogate key for every contract, but the dimensions filtered out rows
+        -- with a null name — so a null name would leave the fact pointing at a
+        -- dimension row that does not exist. Bucketing nulls as 'Unknown' keeps
+        -- that contract's spend attributable instead of dropping it, and keeps
+        -- fact and dimensions consistent by construction. (0 null names today,
+        -- so this is output-preserving now and a guard against drift.)
+        coalesce(agency_name, 'Unknown')           as agency_name,
         coalesce(agency_abn, 'UNKNOWN')            as agency_abn,
-        supplier_name,
+        coalesce(supplier_name, 'Unknown')         as supplier_name,
         coalesce(supplier_abn, 'UNKNOWN')          as supplier_abn,
-        category_name,
+        coalesce(category_name, 'Unknown')         as category_name,
         coalesce(category_unspsc, 'UNKNOWN')       as category_unspsc,
         coalesce(procurement_method, 'Unknown')    as procurement_method,
         contract_description,

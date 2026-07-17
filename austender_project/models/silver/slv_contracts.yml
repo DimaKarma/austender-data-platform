@@ -19,5 +19,19 @@ models:
         description: "Procurement method; NULL is replaced with 'Unknown'."
         data_tests:
           - not_null
+      # The name fields are coalesced to 'Unknown', so the dimensions never drop
+      # a contract and the fact never orphans a key. These tests lock that in.
+      - name: supplier_name
+        description: "Supplier name; NULL is replaced with 'Unknown'."
+        data_tests:
+          - not_null
+      - name: agency_name
+        description: "Agency name; NULL is replaced with 'Unknown'."
+        data_tests:
+          - not_null
+      - name: category_name
+        description: "Category name; NULL is replaced with 'Unknown'."
+        data_tests:
+          - not_null
       - name: publish_date
         description: "Date the contract was published."

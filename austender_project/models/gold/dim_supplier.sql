@@ -25,7 +25,8 @@ with suppliers as (
         supplier_name,
         supplier_abn
     from {{ ref('slv_contracts') }}
-    where supplier_name is not null
+    -- No null filter: Silver coalesces missing names to 'Unknown', so the
+    -- dimension covers every contract the fact points at (no orphaned keys).
 ),
 
 abr as (

@@ -8,7 +8,8 @@ with categories as (
         category_name,
         category_unspsc
     from {{ ref('slv_contracts') }}
-    where category_name is not null
+    -- No null filter: Silver coalesces missing names to 'Unknown', so every
+    -- fact row has a matching dimension row.
 )
 
 select
