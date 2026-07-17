@@ -38,14 +38,16 @@ CREATE SCHEMA IF NOT EXISTS austender_db.bronze
 CREATE SCHEMA IF NOT EXISTS austender_db.silver
     COMMENT = 'Cleansed layer: typing, deduplication, standardization';
 CREATE SCHEMA IF NOT EXISTS austender_db.gold
-    COMMENT = 'Consumption layer: star schema (dim/fct) for BI';
+    COMMENT = 'Curated layer: star schema (dim/fct) — the model, not what BI reads';
+CREATE SCHEMA IF NOT EXISTS austender_db.mart
+    COMMENT = 'Consumption layer: reporting views with caveats applied; what BI reads';
 
 -- 3. RBAC --------------------------------------------------------------
 USE ROLE SECURITYADMIN;
 
 -- 3.1 Functional roles
 CREATE ROLE IF NOT EXISTS austender_de      COMMENT = 'Data Engineer: full access to every layer';
-CREATE ROLE IF NOT EXISTS austender_analyst COMMENT = 'Analyst: read-only access to GOLD';
+CREATE ROLE IF NOT EXISTS austender_analyst COMMENT = 'Analyst: read-only access to MART';
 CREATE ROLE IF NOT EXISTS austender_ci      COMMENT = 'Service role for CI/CD (dbt build)';
 
 -- 3.2 Hierarchy: functional roles roll up to SYSADMIN
@@ -60,6 +62,7 @@ GRANT USAGE ON ALL SCHEMAS IN DATABASE austender_db TO ROLE austender_de;
 GRANT ALL   ON SCHEMA austender_db.bronze TO ROLE austender_de;
 GRANT ALL   ON SCHEMA austender_db.silver TO ROLE austender_de;
 GRANT ALL   ON SCHEMA austender_db.gold   TO ROLE austender_de;
+GRANT ALL   ON SCHEMA austender_db.mart   TO ROLE austender_de;
 -- Grants on both existing and future objects
 GRANT ALL ON ALL TABLES    IN DATABASE austender_db TO ROLE austender_de;
 GRANT ALL ON FUTURE TABLES IN DATABASE austender_db TO ROLE austender_de;
@@ -73,19 +76,25 @@ GRANT USAGE ON ALL SCHEMAS IN DATABASE austender_db TO ROLE austender_ci;
 GRANT ALL ON SCHEMA austender_db.bronze TO ROLE austender_ci;
 GRANT ALL ON SCHEMA austender_db.silver TO ROLE austender_ci;
 GRANT ALL ON SCHEMA austender_db.gold   TO ROLE austender_ci;
+GRANT ALL ON SCHEMA austender_db.mart   TO ROLE austender_ci;
 GRANT ALL ON ALL TABLES    IN DATABASE austender_db TO ROLE austender_ci;
 GRANT ALL ON FUTURE TABLES IN DATABASE austender_db TO ROLE austender_ci;
 GRANT ALL ON ALL VIEWS     IN DATABASE austender_db TO ROLE austender_ci;
 GRANT ALL ON FUTURE VIEWS  IN DATABASE austender_db TO ROLE austender_ci;
 
--- 3.5 Grants for ANALYST (least privilege: read GOLD only)
+-- 3.5 Grants for ANALYST (least privilege: read MART only, not the raw star)
+--     The analyst reads the consumption layer, where the caveats are already
+--     applied. GOLD is deliberately NOT granted: the mart views reach it through
+--     ownership chaining (view and gold tables share owner austender_de), so the
+--     analyst can query the views without ever touching the star directly, and
+--     cannot run a naive SUM over fct_contracts.
 GRANT USAGE ON WAREHOUSE austender_wh TO ROLE austender_analyst;
 GRANT USAGE ON DATABASE  austender_db TO ROLE austender_analyst;
-GRANT USAGE ON SCHEMA    austender_db.gold TO ROLE austender_analyst;
-GRANT SELECT ON ALL TABLES    IN SCHEMA austender_db.gold TO ROLE austender_analyst;
-GRANT SELECT ON FUTURE TABLES IN SCHEMA austender_db.gold TO ROLE austender_analyst;
-GRANT SELECT ON ALL VIEWS     IN SCHEMA austender_db.gold TO ROLE austender_analyst;
-GRANT SELECT ON FUTURE VIEWS  IN SCHEMA austender_db.gold TO ROLE austender_analyst;
+GRANT USAGE ON SCHEMA    austender_db.mart TO ROLE austender_analyst;
+GRANT SELECT ON ALL VIEWS     IN SCHEMA austender_db.mart TO ROLE austender_analyst;
+GRANT SELECT ON FUTURE VIEWS  IN SCHEMA austender_db.mart TO ROLE austender_analyst;
+GRANT SELECT ON ALL TABLES    IN SCHEMA austender_db.mart TO ROLE austender_analyst;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA austender_db.mart TO ROLE austender_analyst;
 
 -- 3.6 Grant the roles to the current user (REPLACE YOUR_USERNAME) ------
 --     Find your name with: SELECT CURRENT_USER();

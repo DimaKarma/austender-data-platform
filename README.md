@@ -58,10 +58,12 @@ Med-Pet/
 │   ├── macros/                      # generate_schema_name, clean_string,
 │   │                                #   contract_amendment (-A<n> parsing)
 │   ├── tests/                       # assert_gold_matches_silver (drift guard)
+│   ├── seeds/                       # known_non_suppliers (curated: FMS, panels)
 │   └── models/
-│       ├── staging/                 # _bronze__sources.yml, stg_contracts
+│       ├── staging/                 # _bronze__sources.yml, stg_contracts, stg_abr_entity
 │       ├── silver/                  # slv_contracts (+ tests)
-│       └── gold/                    # dim_* , fct_contracts (+ tests)
+│       ├── gold/                    # dim_* , fct_contracts (+ tests)
+│       └── mart/                    # rpt_* reporting views (consumption layer)
 ├── .github/workflows/dbt_ci.yml     # CI: dbt build on PR
 ├── requirements.txt
 └── .gitignore
@@ -118,28 +120,50 @@ dbt docs generate    # catalog + lineage
 </details>
 
 ### 3. BI
-Point Power BI / Tableau at the `AUSTENDER_DB.GOLD` schema (role
-`austender_analyst`, read-only) and build dashboards on top of the star schema.
+Point Power BI / Tableau at the `AUSTENDER_DB.MART` schema (role
+`austender_analyst`, read-only). The mart is a thin set of reporting views over
+the gold star with the data-quality caveats already applied and two spend
+measures defined once, so the correct query is the default rather than a footnote:
+
+- `rpt_contracts` — one row per contract, supplier resolved to its real entity,
+  with `is_attributable` and `unattributable_reason`.
+- `rpt_supplier_spend` — one row per real supplier (Hays is one line, not 77),
+  with `total_spend` and `attributable_spend`.
+- `rpt_agency_spend` — spend per agency per year, both measures.
+
+`total_spend` reconciles to the raw fact ($191.01B); `attributable_spend`
+($156.91B) is the part traceable to a named supplier — the $34.10B gap is
+placeholder ABNs and non-supplier channels. Order `rpt_supplier_spend` by
+`attributable_spend` and the top of the table is HP, Airbus, IBM; order by
+`total_spend` and it is `DHA - CENTRAL OFFICE` and `FMS ACCOUNT`, which the flags
+mark as not real suppliers.
+
+**The analyst never sees the raw star.** `austender_analyst` is granted `MART`
+only; `GOLD` and `SILVER` are not. The mart views reach the star through
+ownership chaining (views and gold tables share owner `austender_de`), so the
+role can read the reports but a naive `SUM` over `fct_contracts` is denied
+outright — not discouraged, denied.
 
 ### Verifying RBAC (read this before concluding it is broken)
 
 Snowflake enables **secondary roles** by default (`DEFAULT_SECONDARY_ROLES = ALL`).
 If the account owner — who also holds `ACCOUNTADMIN` — connects with
 `role=austender_analyst`, the session still carries every other role they own, so
-it can read Silver and Bronze. That is the user's admin privileges leaking in, not
-a hole in the grants. Turn secondary roles off to test the analyst honestly:
+it can read anything. That is the user's admin privileges leaking in, not a hole
+in the grants. Turn secondary roles off to test the analyst honestly:
 
 ```sql
 USE ROLE austender_analyst;
 USE SECONDARY ROLES NONE;
-SELECT COUNT(*) FROM gold.fct_contracts;    -- 241,164
-SELECT COUNT(*) FROM silver.slv_contracts;  -- SQL compilation error: object does not exist
-SELECT COUNT(*) FROM bronze.raw_contract_data;  -- SQL compilation error: object does not exist
+SELECT COUNT(*) FROM mart.rpt_supplier_spend;  -- 35,797  (reads the mart)
+SELECT COUNT(*) FROM gold.fct_contracts;       -- SQL compilation error: does not exist or not authorized
+SELECT COUNT(*) FROM silver.slv_contracts;     -- SQL compilation error: does not exist or not authorized
 ```
 
-Verified against the live account: Gold reads, Silver and Bronze are denied.
-A real analyst user, granted only `austender_analyst`, is restricted with or
-without this setting.
+Verified against the live account: the mart reads, the gold star and silver are
+denied. The analyst reaches the star's data only through the mart views
+(ownership chaining), never directly — so it cannot run a naive `SUM` over the
+raw fact.
 
 ## Data quality notes
 

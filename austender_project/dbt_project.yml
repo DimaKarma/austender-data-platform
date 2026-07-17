@@ -31,4 +31,18 @@ models:
     gold:
       +materialized: table
       +schema: gold
-      +tags: ["gold", "mart"]
+      +tags: ["gold"]
+    mart:
+      # Consumption layer: reporting views with the data-quality caveats already
+      # applied and canonical measures defined, so the correct query is the
+      # default. Views, not tables — thin over the gold star.
+      +materialized: view
+      +schema: mart
+      +tags: ["mart", "reporting"]
+
+seeds:
+  austender_project:
+    +schema: gold
+    known_non_suppliers:
+      +column_types:
+        normalized_name: varchar

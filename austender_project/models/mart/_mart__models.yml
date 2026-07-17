@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: rpt_contracts
+    description: >
+      Base reporting view, one row per contract, with the supplier resolved to
+      its real entity and is_attributable computed. The consumption layer builds
+      on this so every report applies the same caveats.
+    columns:
+      - name: contract_id
+        data_tests: [not_null, unique]
+      - name: is_attributable
+        description: "True when the contract value can be attributed to a named
+          supplier: the ABN is not an agency placeholder and the supplier is not
+          a known non-company channel (FMS, travel panels)."
+        data_tests:
+          - not_null
+      - name: contract_value
+        data_tests: [not_null]
+
+  - name: rpt_supplier_spend
+    description: "Spend per real supplier (one row per supplier entity), carrying
+      total_spend and attributable_spend."
+    columns:
+      - name: supplier_entity_key
+        data_tests: [not_null, unique]
+      - name: total_spend
+        data_tests: [not_null]
+
+  - name: rpt_agency_spend
+    description: "Spend per agency per year, carrying total_spend and attributable_spend."
+    columns:
+      - name: total_spend
+        data_tests: [not_null]
