@@ -6,9 +6,13 @@
   this keeps them all, so a contract that used a supplier's trading name can still
   resolve to its ABN. Used only by int_abr_name_lookup.
 
-  Materialized as a table: ~25M rows, scanned once per build by the lookup.
+  Materialized as a table in prod (scanned once per build by the lookup), but as a
+  VIEW on the ci target: a PR run still executes the SQL through the view when the
+  lookup builds — so coverage is preserved — without copying 26.6M rows into
+  CI_SILVER. Interim until Slim CI (state:modified + defer) skips unchanged ABR
+  models entirely.
 */
-{{ config(materialized='table') }}
+{{ config(materialized=('view' if target.name == 'ci' else 'table')) }}
 
 select
     {{ clean_string('abn') }}          as abn,

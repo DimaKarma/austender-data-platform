@@ -7,9 +7,11 @@
   separately by stg_abr_names for matching. Guarded with qualify in case a record
   ever yields more than one MAIN.
 
-  Materialized as a table: dim_supplier joins it every build.
+  Materialized as a table in prod (dim_supplier joins it every build), but a VIEW
+  on the ci target so a PR run does not copy ~20.4M rows into CI_GOLD's upstream —
+  the join still resolves through the view. Interim until Slim CI.
 */
-{{ config(materialized='table') }}
+{{ config(materialized=('view' if target.name == 'ci' else 'table')) }}
 
 with source as (
     select * from {{ source('abr_bronze', 'raw_abr_entity') }}

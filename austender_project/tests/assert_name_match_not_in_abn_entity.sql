@@ -3,12 +3,15 @@
   real (ABN-keyed) supplier entity — a possible false positive would then
   contaminate that supplier's numbers, the unrecoverable direction.
 
-  This is the live guard the reviewer's suggested "check by resolved_abn" was
-  reaching for. Checking resolved_abn directly would false-positive: a name-keyed
-  fallback group legitimately holds rows with different resolved_abns (a
-  suggestion next to a placeholder that share a normalized name). The real
-  invariant is narrower and this asserts it: no abn_source = 'abr_name_match' row
-  shares its supplier_entity_key with a stated, register-vouched (ABN-keyed) row.
+  Honest scope: this is a targeted TRIPWIRE, not a data-live guard. Under the
+  current key it cannot fail — name-matched rows are keyed 'NAME:…' and
+  register-vouched stated rows 'ABN:…', so they cannot share a supplier_entity_key
+  by construction. It exists to catch a specific dangerous refactor: making
+  entity_business_key group a name-matched (suggested) ABN under an ABN key. It is
+  more precisely aimed than assert_supplier_rollup_never_merges_abns, but same
+  category. The one genuinely consequential invariant — normalized_name unique in
+  int_abr_name_lookup (a violation fans out the join and corrupts the dimension) —
+  is asserted there.
 
   Fails with one row per offending name-matched supplier.
 */

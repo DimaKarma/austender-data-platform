@@ -1,0 +1,20 @@
+version: 2
+
+models:
+  - name: int_abr_name_lookup
+    description: >
+      Name → ABN map for no-ABN contracts, unique matches only. dim_supplier
+      left-joins this on the normalized supplier name, so normalized_name must be
+      unique — otherwise the join fans out and inflates the dimension. This is the
+      one genuinely consequential invariant here (a violation corrupts data),
+      unlike the structural key-shape tripwires elsewhere.
+    columns:
+      - name: normalized_name
+        description: "Normalized supplier name; the join key. Must be unique."
+        data_tests:
+          - not_null
+          - unique
+      - name: matched_abn
+        description: "The single register ABN this name maps to."
+        data_tests:
+          - not_null
