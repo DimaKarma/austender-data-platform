@@ -238,17 +238,54 @@ a *Commonwealth Government Entity*, so its 140 names are a data-entry artifact;
 firm. Same symptom, opposite verdict, decided by the register rather than by a
 threshold.
 
+### Counting suppliers: use `supplier_entity_key`
+
+`supplier_key` counts *spellings*, not suppliers — 55,698 dimension rows for
+**35,819** real entities. Hays alone holds 77 rows, so its 1,394 contracts and
+$89.3M never appear as one line in a report.
+
+`dim_supplier.supplier_entity_key` groups the rows that are one supplier: on the
+ABN where the register vouches for it, on the normalized name where it does not
+(no ABN, an ABN never issued, or a placeholder). That is the safe half of the
+re-key that was reverted — the flag is what makes it safe, so Hays collapses to
+one entity while Defence's 140 firms stay apart.
+
+The grain is untouched, so `supplier_key` and every fact FK keep working. Group by
+`supplier_entity_key` for "how many suppliers" and "spend by supplier";
+`assert_supplier_rollup_never_merges_abns` fails the build if a group ever spans
+two registered entities.
+
 > This project uses data from the [ABN Bulk Extract](https://data.gov.au/data/dataset/abn-bulk-extract),
 > © Australian Business Register, licensed under
 > [CC BY 3.0 AU](https://creativecommons.org/licenses/by/3.0/au/). The data is
 > used as published; the Registrar does not endorse this project.
+
+**Not every fake supplier has an ABN to check.** 26,629 contracts worth **$26.84B
+(14.1% of spend)** name a supplier with no ABN at all, so neither the register nor
+the placeholder flag can reach them. That cohort mixes three things:
+
+- **Entities that are not suppliers.** `FMS ACCOUNT` — the US Foreign Military
+  Sales programme — is the single largest "supplier" in the mart at **$10.20B**
+  across 479 contracts, all of them Defence and the Defence Materiel
+  Organisation. `Domestic Air Travel Panel Providers` ($1.03B on one contract) is
+  a procurement panel, not a company. Catching these needs a curated list; no
+  reference source can, because they were never entities.
+- **Genuine foreign suppliers** — `EADS CONSTRUCCIONES AERONAUTICAS SA`,
+  `NAVANTIA, S.A.` — which correctly have no ABN.
+- **Australian companies whose ABN is simply missing** — `CSL LTD` ($0.80B),
+  `ADI MUNITIONS PTY LTD`. These are the fillable gaps: a local name-match
+  against the register resolves ~4,077 of 13,192 names (~7,900 contracts), which
+  is a follow-up rather than something to fake now.
 
 Two further caveats, deliberately not resolved: 9 contracts carry a placeholder
 value of `1` — surfaced by `assert_no_placeholder_values` as a build warning
 rather than hand-corrected, since the SourceURL cannot supply the real figure and
 a manual edit would not survive a reload; and agency names appear in punctuation
 variants (`Department of Infrastructure, Transport` vs `... Transport`), which
-inflates `dim_agency`.
+inflates `dim_agency`. The register does **not** fix agencies: it returns today's
+entity (`Services Australia`), while contracts carry the historical name
+(`Centrelink`), so 79 of 149 disagree by rename rather than by error. That needs
+SCD2, not a join.
 
 ## Where this departs from the source analysis
 

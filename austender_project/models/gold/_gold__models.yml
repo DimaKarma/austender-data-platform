@@ -34,6 +34,19 @@ models:
           Exclude these rows before aggregating by ABN."
         data_tests:
           - not_null
+      - name: supplier_entity_key
+        description: >
+          Groups the dimension rows that are one real supplier: on the ABN where
+          the register vouches for it, on the name otherwise. Group by this for
+          "how many suppliers" or "spend by supplier" — supplier_key counts
+          spellings, not suppliers (55,698 rows vs 36,088 entities).
+        data_tests:
+          - not_null
+      - name: supplier_entity_name
+        description: "Display name for the entity group — the registered name when
+          grouped on the ABN, the contract's spelling otherwise."
+        data_tests:
+          - not_null
 
   - name: dim_agency
     description: "The \"Government buyer\" dimension."
