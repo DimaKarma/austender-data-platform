@@ -27,8 +27,16 @@ cleaned as (
     select
         contract_id,
         agency_name,
-        coalesce(agency_abn, 'UNKNOWN')            as agency_abn,
         supplier_name,
+
+        -- Business identifiers, derived from the NULL-able ABNs. These read the
+        -- input columns, so they see the real ABN or NULL — never the 'UNKNOWN'
+        -- placeholder aliased below. The key must be the identifier; 'UNKNOWN'
+        -- is only what an analyst reads.
+        {{ supplier_business_key('supplier_abn', 'supplier_name') }} as supplier_business_key,
+        {{ agency_legal_entity_key('agency_abn', 'agency_name') }}   as agency_legal_entity_key,
+
+        coalesce(agency_abn, 'UNKNOWN')            as agency_abn,
         coalesce(supplier_abn, 'UNKNOWN')          as supplier_abn,
         category_name,
         coalesce(category_unspsc, 'UNKNOWN')       as category_unspsc,

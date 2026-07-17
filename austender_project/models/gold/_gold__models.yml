@@ -2,10 +2,18 @@ version: 2
 
 models:
   - name: dim_supplier
-    description: "The \"Supplier\" dimension."
+    description: >
+      The "Supplier" dimension. Grain: one row per supplier, identified as the
+      source identifies it — ABN when present, otherwise name. Name is an
+      attribute; where spellings of one ABN differ, the most recently published
+      one wins.
     columns:
       - name: supplier_key
-        description: "Surrogate PK."
+        description: "Surrogate PK, hashed from supplier_business_key."
+        data_tests: [not_null, unique]
+      - name: supplier_business_key
+        description: "The supplier's ABN, or its name when it has none (foreign
+          suppliers). Reproduces the source's own supplierid column exactly."
         data_tests: [not_null, unique]
       - name: supplier_name
         data_tests: [not_null]
