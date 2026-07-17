@@ -1,0 +1,49 @@
+name: Deploy to prod
+
+# Manual, gated deployment — the button IS the promotion gate. Runs `dbt build`
+# against the prod schemas (BRONZE/SILVER/GOLD/MART) as a dedicated deploy service
+# user (key-pair) whose role has prod write. Kept separate from the CI workflow,
+# whose service user is least-privilege (bronze-read only) and can never touch prod.
+on:
+  workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: "Pass --full-refresh (rebuild incremental models and tables from scratch)"
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: austender_project
+    env:
+      SNOWFLAKE_ACCOUNT:                 ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_DEPLOY_USER:             ${{ secrets.SNOWFLAKE_DEPLOY_USER }}
+      SNOWFLAKE_DEPLOY_PRIVATE_KEY_PATH: ${{ github.workspace }}/deploy_rsa_key.p8
+      DBT_PROFILES_DIR:                  ${{ github.workspace }}/austender_project
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-snowflake
+
+      - name: Write Snowflake deploy key
+        run: echo "${{ secrets.SNOWFLAKE_DEPLOY_PRIVATE_KEY }}" | base64 -d > "$SNOWFLAKE_DEPLOY_PRIVATE_KEY_PATH"
+
+      - name: Render profiles.yml
+        run: cp profiles.example.yml profiles.yml
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt build (deploy to prod)
+        run: dbt build --target prod ${{ inputs.full_refresh && '--full-refresh' || '' }}
+
+      - name: dbt docs generate
+        run: dbt docs generate --target prod

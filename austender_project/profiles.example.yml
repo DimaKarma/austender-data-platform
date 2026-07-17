@@ -20,16 +20,29 @@ austender:
       threads: 4
       client_session_keep_alive: False
     # CI authenticates as a dedicated service user with key-pair auth, not a
-    # password — the production practice for automation, and it keeps a human's
-    # password out of GitHub. The workflow writes the private key to the path in
-    # SNOWFLAKE_CI_PRIVATE_KEY_PATH from a repo secret.
+    # password. Env-var defaults so the profile also parses in the deploy job,
+    # which sets only the deploy-target vars (dbt renders every output on load).
     ci:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_CI_USER') }}"
-      private_key_path: "{{ env_var('SNOWFLAKE_CI_PRIVATE_KEY_PATH') }}"
+      user: "{{ env_var('SNOWFLAKE_CI_USER', '') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_CI_PRIVATE_KEY_PATH', '') }}"
       role: AUSTENDER_CI
       warehouse: AUSTENDER_CI_WH
+      database: AUSTENDER_DB
+      schema: silver
+      threads: 4
+    # Manual deploy to the prod schemas (BRONZE/SILVER/GOLD/MART — the
+    # generate_schema_name macro only prefixes CI_ on the ci target). Runs from the
+    # deploy-only workflow_dispatch button as a SEPARATE service user with prod
+    # write, so the CI service user stays least-privilege (bronze-read only).
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_DEPLOY_USER', '') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_DEPLOY_PRIVATE_KEY_PATH', '') }}"
+      role: AUSTENDER_DE
+      warehouse: AUSTENDER_WH
       database: AUSTENDER_DB
       schema: silver
       threads: 4

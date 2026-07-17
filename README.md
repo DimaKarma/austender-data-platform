@@ -5,7 +5,7 @@
 An end-to-end analytics pipeline built on real data about Australian federal
 contracts ([AusTender](https://www.tenders.gov.au/)). The project targets the
 stack and requirements of the Medavie data-engineering role: **Snowflake, dbt,
-Medallion Architecture, RBAC, CI**.
+Medallion Architecture, RBAC, CI/CD**.
 
 > **TL;DR** — 241,164 government contracts flow through a Bronze → Silver → Gold →
 > Mart pipeline in Snowflake. Along the way it corrects a **$11.2B**
@@ -35,11 +35,13 @@ Medallion Architecture, RBAC, CI**.
   or a cancellation is preserved instead of overwritten on rebuild.
 - **dbt Core** — sources + freshness, staging/silver/gold models, surrogate keys,
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
-- **CI** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
-  `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI reads.
-  CI authenticates as a dedicated service user with **key-pair auth**, not a
-  human's password. (Deployment to the prod schemas is run manually from the dev
-  target — there is no auto-CD to the shared trial account by design.)
+- **CI/CD** — GitHub Actions. **CI**: `dbt build` (run + test) on every PR, into
+  isolated `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI
+  reads. **CD**: a manual, gated `workflow_dispatch` **Deploy** button rebuilds the
+  prod schemas — the button is the promotion gate, so there is no unreviewed
+  auto-deploy to the shared trial account. The two run as **separate** key-pair
+  service users: CI's is least-privilege (bronze-read only, cannot touch prod);
+  deploy's has prod write. No human password reaches GitHub.
 - **ELT automation** — a Python loader instead of importing the CSV by hand.
 
 ## Architecture
@@ -179,6 +181,18 @@ GRANT ROLE austender_ci TO USER austender_ci_svc;   -- as SECURITYADMIN
 ```
 Then set repo secrets `SNOWFLAKE_CI_USER=austender_ci_svc` and
 `SNOWFLAKE_CI_PRIVATE_KEY=$(base64 -w0 ci_rsa_key.p8)`.
+
+**Deploy service user (one-time, for the `prod` target / Deploy button).** Same
+pattern, a *separate* user with prod write, so the CI user stays least-privilege:
+```sql
+CREATE USER IF NOT EXISTS austender_deploy_svc
+  DEFAULT_ROLE = austender_de DEFAULT_WAREHOUSE = austender_wh;
+ALTER USER austender_deploy_svc SET RSA_PUBLIC_KEY = '<deploy public key body>';
+GRANT ROLE austender_de TO USER austender_deploy_svc;   -- as SECURITYADMIN
+```
+Then set `SNOWFLAKE_DEPLOY_USER=austender_deploy_svc` and
+`SNOWFLAKE_DEPLOY_PRIVATE_KEY=$(base64 -w0 deploy_rsa_key.p8)`. Deploy is run from
+the **Actions → Deploy to prod → Run workflow** button.
 </details>
 
 ### 3. BI
