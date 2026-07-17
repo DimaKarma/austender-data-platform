@@ -1,0 +1,72 @@
+version: 2
+
+models:
+  - name: dim_supplier
+    description: "The \"Supplier\" dimension."
+    columns:
+      - name: supplier_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+      - name: supplier_name
+        data_tests: [not_null]
+
+  - name: dim_agency
+    description: "The \"Government buyer\" dimension."
+    columns:
+      - name: agency_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+      - name: agency_name
+        data_tests: [not_null]
+
+  - name: dim_category
+    description: "The \"Procurement category (UNSPSC)\" dimension."
+    columns:
+      - name: category_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+
+  - name: dim_date
+    description: "The calendar dimension."
+    columns:
+      - name: date_key
+        description: "Surrogate PK in YYYYMMDD form."
+        data_tests: [not_null, unique]
+
+  - name: fct_contracts
+    description: "The \"Contract\" fact. Grain: one contract_id."
+    columns:
+      - name: contract_id
+        description: "Degenerate dimension / primary key of the fact."
+        data_tests: [not_null, unique]
+      - name: contract_value
+        description: "Contract value."
+        data_tests:
+          - not_null
+      - name: supplier_key
+        description: "FK → dim_supplier."
+        data_tests:
+          # dbt >= 1.10: generic-test arguments nest under `arguments`.
+          - relationships:
+              arguments:
+                to: ref('dim_supplier')
+                field: supplier_key
+      - name: agency_key
+        description: "FK → dim_agency."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_agency')
+                field: agency_key
+      - name: category_key
+        description: "FK → dim_category."
+        data_tests:
+          - not_null
+      - name: publish_date_key
+        description: "FK → dim_date (YYYYMMDD). Guards the calendar spine: if the
+          fact ever produces a date outside dim_date's fixed range, this fails."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key

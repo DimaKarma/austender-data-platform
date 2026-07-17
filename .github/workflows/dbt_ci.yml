@@ -1,0 +1,42 @@
+name: dbt CI
+
+# CI/CD: run dbt build (run + test) on every PR and push.
+# Keeps data tests in the pipeline rather than as a manual step.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: austender_project
+    env:
+      SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      DBT_PROFILES_DIR:   ${{ github.workspace }}/austender_project
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install dbt-snowflake
+
+      - name: Render CI profiles.yml
+        run: cp profiles.example.yml profiles.yml
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: dbt build (run + test)
+        run: dbt build --target ci
+
+      - name: dbt docs generate
+        run: dbt docs generate --target ci

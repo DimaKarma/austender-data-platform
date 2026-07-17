@@ -1,0 +1,28 @@
+# Copy to ~/.dbt/profiles.yml and fill in the credentials.
+# Values can be pulled from the environment via "{{ env_var('SNOWFLAKE_ACCOUNT') }}".
+# Note: bootstrap.py generates austender_project/profiles.yml from ingestion/.env,
+# so this template is only needed for the manual setup path and for CI.
+austender:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: AUSTENDER_DE
+      warehouse: AUSTENDER_WH
+      database: AUSTENDER_DB
+      schema: silver          # base schema; overridden in dbt_project.yml
+      threads: 4
+      client_session_keep_alive: False
+    ci:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: AUSTENDER_CI
+      warehouse: AUSTENDER_CI_WH
+      database: AUSTENDER_DB
+      schema: silver
+      threads: 4

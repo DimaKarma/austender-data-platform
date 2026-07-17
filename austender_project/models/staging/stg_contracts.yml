@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_contracts
+    description: "Staging: typed, renamed contracts on top of bronze."
+    columns:
+      - name: contract_id
+        description: "Contract Notice ID."
+        data_tests:
+          - not_null
+      - name: contract_value
+        description: "Contract value, NUMBER(18,2)."

@@ -1,0 +1,34 @@
+name: 'austender_project'
+version: '1.0.0'
+config-version: 2
+
+profile: 'austender'
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+seed-paths: ["seeds"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Materializations per Medallion layer.
+# The schema comes from the custom generate_schema_name macro (see macros/),
+# which is why the target schemas are named explicitly here.
+models:
+  austender_project:
+    staging:
+      +materialized: view
+      +schema: silver          # stg_* — a thin layer over bronze
+      +tags: ["staging"]
+    silver:
+      +materialized: table
+      +schema: silver
+      +tags: ["silver"]
+    gold:
+      +materialized: table
+      +schema: gold
+      +tags: ["gold", "mart"]

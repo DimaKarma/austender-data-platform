@@ -1,0 +1,23 @@
+version: 2
+
+models:
+  - name: slv_contracts
+    description: >
+      Silver: cleansed, deduplicated contracts. One row = one contract_id.
+      NULLs are handled and rows without a value are filtered out.
+    columns:
+      - name: contract_id
+        description: "Contract Notice ID — primary key of the silver layer."
+        data_tests:
+          - not_null
+          - unique
+      - name: contract_value
+        description: "Contract value (> 0)."
+        data_tests:
+          - not_null
+      - name: procurement_method
+        description: "Procurement method; NULL is replaced with 'Unknown'."
+        data_tests:
+          - not_null
+      - name: publish_date
+        description: "Date the contract was published."

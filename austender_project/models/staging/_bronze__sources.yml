@@ -1,0 +1,22 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: austender_db
+    schema: bronze
+    description: "Raw layer — AusTender data loaded as-is by the Python loader."
+    tables:
+      - name: raw_contract_data
+        description: "Raw Australian federal contracts (CSV, 15 columns)."
+        # dbt >= 1.10: loaded_at_field and freshness live under config, not at
+        # the top level of the table.
+        config:
+          loaded_at_field: _loaded_at
+          freshness:
+            warn_after: {count: 30, period: day}
+            error_after: {count: 90, period: day}
+        columns:
+          - name: cnid
+            description: "Contract Notice ID — the natural key of a contract."
+          - name: value
+            description: "Contract value (string in the source; needs a CAST)."

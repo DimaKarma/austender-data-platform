@@ -1,0 +1,28 @@
+# secrets
+.env
+profiles.yml
+*.key
+
+# dbt
+austender_project/target/
+austender_project/dbt_packages/
+austender_project/logs/
+logs/
+# machine-local dbt telemetry id
+austender_project/.user.yml
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# data (the 75MB CSV is not committed)
+*.csv
+*.csv.gz
+
+# reference material / source documents — not part of the pipeline
+*.pdf
+
+# OS
+.DS_Store
