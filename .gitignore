@@ -2,6 +2,8 @@
 .env
 profiles.yml
 *.key
+*.p8
+*.pem
 
 # dbt
 austender_project/target/

@@ -18,6 +18,8 @@ Medallion Architecture, RBAC, CI/CD**.
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
 - **CI/CD** — GitHub Actions: `dbt build` (run + test) on every PR, into isolated
   `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI reads.
+  CI authenticates as a dedicated service user with **key-pair auth**, not a
+  human's password.
 - **ELT automation** — a Python loader instead of importing the CSV by hand.
 
 ## Architecture

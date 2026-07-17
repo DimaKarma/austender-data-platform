@@ -14,11 +14,13 @@ jobs:
     defaults:
       run:
         working-directory: austender_project
+    # CI authenticates as a dedicated service user (austender_ci_svc) with
+    # key-pair auth — no human's password reaches CI. See profiles.example.yml.
     env:
-      SNOWFLAKE_ACCOUNT:  ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER:     ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      DBT_PROFILES_DIR:   ${{ github.workspace }}/austender_project
+      SNOWFLAKE_ACCOUNT:             ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_CI_USER:             ${{ secrets.SNOWFLAKE_CI_USER }}
+      SNOWFLAKE_CI_PRIVATE_KEY_PATH: ${{ github.workspace }}/ci_rsa_key.p8
+      DBT_PROFILES_DIR:              ${{ github.workspace }}/austender_project
     steps:
       - uses: actions/checkout@v5
 
@@ -28,6 +30,10 @@ jobs:
 
       - name: Install dbt
         run: pip install dbt-snowflake
+
+      - name: Write Snowflake private key
+        # The secret holds the PKCS#8 key base64-encoded, so newlines survive.
+        run: echo "${{ secrets.SNOWFLAKE_CI_PRIVATE_KEY }}" | base64 -d > "$SNOWFLAKE_CI_PRIVATE_KEY_PATH"
 
       - name: Render CI profiles.yml
         run: cp profiles.example.yml profiles.yml

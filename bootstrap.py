@@ -191,8 +191,8 @@ austender:
     ci:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      user: "{{ env_var('SNOWFLAKE_CI_USER', '') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_CI_PRIVATE_KEY_PATH', '') }}"
       role: AUSTENDER_CI
       warehouse: AUSTENDER_CI_WH
       database: AUSTENDER_DB

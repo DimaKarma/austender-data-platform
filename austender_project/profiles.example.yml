@@ -5,22 +5,29 @@
 austender:
   target: dev
   outputs:
+    # Defaults on the dev env_vars so this file parses in CI, which only sets the
+    # ci-target vars: dbt renders every output when it loads the profile, so a
+    # bare env_var('SNOWFLAKE_USER') here would fail a CI run that has no password.
     dev:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', '') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
       role: AUSTENDER_DE
       warehouse: AUSTENDER_WH
       database: AUSTENDER_DB
       schema: silver          # base schema; overridden in dbt_project.yml
       threads: 4
       client_session_keep_alive: False
+    # CI authenticates as a dedicated service user with key-pair auth, not a
+    # password — the production practice for automation, and it keeps a human's
+    # password out of GitHub. The workflow writes the private key to the path in
+    # SNOWFLAKE_CI_PRIVATE_KEY_PATH from a repo secret.
     ci:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-      user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      user: "{{ env_var('SNOWFLAKE_CI_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_CI_PRIVATE_KEY_PATH') }}"
       role: AUSTENDER_CI
       warehouse: AUSTENDER_CI_WH
       database: AUSTENDER_DB
