@@ -16,7 +16,10 @@ renamed as (
         {{ clean_string('agencyname') }}                    as agency_name,
         {{ clean_string('agencyabn') }}                     as agency_abn,
         {{ clean_string('suppliername') }}                  as supplier_name,
-        {{ clean_string('supplierabn') }}                   as supplier_abn,
+        -- '0' is the source's sentinel for "foreign supplier, no ABN": those
+        -- 6,693 rows are exactly the ones whose ABN is not 11 digits. Collapse
+        -- it to NULL here so "missing" has one representation downstream.
+        nullif({{ clean_string('supplierabn') }}, '0')      as supplier_abn,
         {{ clean_string('supplierid') }}                    as supplier_source_id,
         {{ clean_string('category') }}                      as category_name,
         {{ clean_string('categoryunspsc') }}                as category_unspsc,

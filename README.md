@@ -144,7 +144,7 @@ Figures below are measured against the full 241,164-row extract, not estimated.
 | Field | Empty | Handling |
 |---|---|---|
 | `procurementmethod` | 62,961 (26.11%) | Silver → `'Unknown'` |
-| `supplierabn` | 20,021 (8.30%) NULL | Silver → `'UNKNOWN'` |
+| `supplierabn` | 26,714 (11.08%) — 20,021 NULL plus 6,693 holding `'0'` | Staging → NULL, Silver → `'UNKNOWN'` |
 | `agencyabn` | 1,219 (0.51%) | Silver → `'UNKNOWN'` |
 | `categoryunspsc` | 92 (0.04%) | Silver → `'UNKNOWN'` |
 | `description` | 56 (0.02%) — 48 NULL plus 8 whitespace-only | left NULL |
@@ -152,15 +152,14 @@ Figures below are measured against the full 241,164-row extract, not estimated.
 Rows without a contract value are filtered out in Silver, and duplicate notices
 are collapsed to the most recent load.
 
-**`supplierabn = '0'` is a sentinel, not a number — and is not yet normalized.**
-A further 6,693 rows (2.78%) carry `'0'` instead of NULL. They are exactly the
-rows whose ABN is not 11 digits, and they are foreign suppliers with no
-Australian Business Number (`PANTA RHEI GMBH`, `PT. MITRA KARYA KREASI`). Only
-suppliers carry it — `agencyabn` never does, since every agency is Australian.
-Silver currently coalesces NULL to `'UNKNOWN'` but passes `'0'` through as if it
-were a real ABN, so the same concept has two representations and 2,985
-`dim_supplier` surrogate keys are built on the sentinel. Normalizing it would
-change those keys, so it is left as a documented gap rather than a silent change.
+**`supplierabn = '0'` is a sentinel, not a number.** 6,693 rows (2.78%) carry
+`'0'` instead of NULL — exactly the rows whose ABN is not 11 digits, and they are
+foreign suppliers with no Australian Business Number (`PANTA RHEI GMBH`,
+`PT. MITRA KARYA KREASI`). Only suppliers carry it; `agencyabn` never does, since
+every agency is Australian. Staging collapses `'0'` to NULL so that "no ABN" has
+a single representation, which is what lets the supplier dimension key on the
+identifier rather than the placeholder. A test (`assert_no_abn_sentinel`) fails
+the build if the sentinel ever reaches Silver again.
 
 **Amendments are separate notices, and they double-count.** AusTender publishes an
 amendment as its own contract notice suffixed `-A<n>`: contract `413292` appears
