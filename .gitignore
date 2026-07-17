@@ -40,3 +40,6 @@ explain-to-kid.md
 # personal: response to the independent audit (Russian), not part of the public repo
 RESPONSE_TO_REVIEW.md
 PROJECT_REVIEW.md
+
+# agent memory: contains the live account id and internal notes — never commit to the public repo
+.agent-memory/
