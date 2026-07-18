@@ -70,6 +70,15 @@ select
     -- time
     f.publish_date,
     d.year                                          as publish_year,
+    f.contract_start_date,
+    f.contract_end_date,
+    f.duration_days,
+    -- a contract is "active" if it has started and not yet ended as of the run
+    coalesce(
+        f.contract_start_date <= current_date()
+        and (f.contract_end_date is null or f.contract_end_date >= current_date()),
+        false
+    )                                               as is_active,
 
     -- the measure, and the one gate that governs how it may be summed
     f.contract_value,

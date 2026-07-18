@@ -1,0 +1,14 @@
+version: 2
+
+seeds:
+  - name: known_non_suppliers
+    description: >
+      Curated list of names that are channels or programmes, not real suppliers
+      (FMS, travel panels). rpt_contracts left-joins on normalized_name, so a
+      duplicate would fan out the report — hence unique.
+    columns:
+      - name: normalized_name
+        description: "Upper/punctuation-stripped name to match against."
+        data_tests:
+          - unique
+          - not_null

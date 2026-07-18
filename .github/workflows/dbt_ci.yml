@@ -9,6 +9,13 @@ on:
   pull_request:
     branches: [main]
 
+# All CI runs share the CI_SILVER/CI_GOLD/CI_MART schemas, so serialize them:
+# two concurrent runs would clobber each other's throwaway build. Queue rather
+# than cancel — let an in-progress build finish.
+concurrency:
+  group: dbt-ci-shared-schemas
+  cancel-in-progress: false
+
 jobs:
   dbt-build:
     runs-on: ubuntu-latest
