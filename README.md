@@ -1,6 +1,9 @@
 # AusTender Data Platform — Snowflake · dbt · Medallion · RBAC
 
 [![dbt CI](https://github.com/DimaKarma/austender-data-platform/actions/workflows/dbt_ci.yml/badge.svg)](https://github.com/DimaKarma/austender-data-platform/actions/workflows/dbt_ci.yml)
+[![docs](https://img.shields.io/badge/dbt%20docs-lineage%20%26%20catalog-orange)](https://dimakarma.github.io/austender-data-platform/)
+
+📖 **[Browsable dbt docs — model catalog, column descriptions, and lineage graph](https://dimakarma.github.io/austender-data-platform/)** (published to GitHub Pages by the Deploy workflow).
 
 An end-to-end analytics pipeline built on real data about Australian federal
 contracts ([AusTender](https://www.tenders.gov.au/)). The project targets the

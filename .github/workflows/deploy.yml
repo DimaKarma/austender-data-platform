@@ -12,6 +12,12 @@ on:
         type: boolean
         default: false
 
+# The docs job needs Pages write; deploy needs nothing special.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -46,4 +52,23 @@ jobs:
         run: dbt build --target prod ${{ inputs.full_refresh && '--full-refresh' || '' }}
 
       - name: dbt docs generate
+        # Generated against prod (deploy user sees every schema), so the catalog
+        # is complete — the CI least-privilege user could not produce it.
         run: dbt docs generate --target prod
+
+      - name: Upload docs as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: austender_project/target
+
+  # Publish the dbt docs site (catalog + lineage) to GitHub Pages.
+  publish-docs:
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
