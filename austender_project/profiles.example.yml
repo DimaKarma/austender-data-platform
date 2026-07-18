@@ -2,8 +2,12 @@
 # Values can be pulled from the environment via "{{ env_var('SNOWFLAKE_ACCOUNT') }}".
 # Note: bootstrap.py generates austender_project/profiles.yml from ingestion/.env,
 # so this template is only needed for the manual setup path and for CI.
+# Default target is `ci` so sqlfluff's dbt templater (which uses the default
+# target) can compile in CI, where the ci key-pair creds are present. Every dbt
+# command passes --target explicitly, so this default only affects sqlfluff.
+# (bootstrap.py generates a separate local profiles.yml whose default is dev.)
 austender:
-  target: dev
+  target: ci
   outputs:
     # Defaults on the dev env_vars so this file parses in CI, which only sets the
     # ci-target vars: dbt renders every output when it loads the profile, so a

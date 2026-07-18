@@ -18,13 +18,13 @@ with c as (
 
 select
     supplier_entity_key,
-    max(supplier_entity_name)                                       as supplier_entity_name,
+    max(supplier_entity_name) as supplier_entity_name,
     -- an entity is attributable or not as a whole (placeholder and non-supplier
     -- rows form their own name-keyed entities), but aggregate defensively.
-    booland_agg(is_attributable)                                    as is_attributable,
+    booland_agg(is_attributable) as is_attributable,
 
-    count(*)                                                        as contracts,
-    sum(contract_value)                                             as total_spend,
-    sum(case when is_attributable then contract_value else 0 end)   as attributable_spend
+    count(*) as contracts,
+    sum(contract_value) as total_spend,
+    sum(case when is_attributable then contract_value else 0 end) as attributable_spend
 from c
 group by supplier_entity_key

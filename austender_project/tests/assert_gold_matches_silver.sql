@@ -39,16 +39,16 @@ actual as (
 -- A contract exists in Silver but never made it into the fact.
 missing_in_gold as (
     select e.contract_id, 'missing_in_gold' as issue
-    from expected e
-    left join actual a on e.contract_id = a.contract_id
+    from expected as e
+    left join actual as a on e.contract_id = a.contract_id
     where a.contract_id is null
 ),
 
 -- The fact carries a contract Silver no longer has.
 orphaned_in_gold as (
     select a.contract_id, 'not_in_silver' as issue
-    from actual a
-    left join expected e on a.contract_id = e.contract_id
+    from actual as a
+    left join expected as e on a.contract_id = e.contract_id
     where e.contract_id is null
 ),
 
@@ -56,14 +56,15 @@ orphaned_in_gold as (
 -- only insert, or a watermark that skips amendments, produces.
 stale_in_gold as (
     select e.contract_id, 'stale_value_in_gold' as issue
-    from expected e
-    join actual a on e.contract_id = a.contract_id
-    where e.contract_value      is distinct from a.contract_value
-       or e.duration_days       is distinct from a.duration_days
-       or e.procurement_method  is distinct from a.procurement_method
-       or e.publish_date        is distinct from a.publish_date
-       or e.contract_start_date is distinct from a.contract_start_date
-       or e.contract_end_date   is distinct from a.contract_end_date
+    from expected as e
+    inner join actual as a on e.contract_id = a.contract_id
+    where
+        e.contract_value is distinct from a.contract_value
+        or e.duration_days is distinct from a.duration_days
+        or e.procurement_method is distinct from a.procurement_method
+        or e.publish_date is distinct from a.publish_date
+        or e.contract_start_date is distinct from a.contract_start_date
+        or e.contract_end_date is distinct from a.contract_end_date
 )
 
 select * from missing_in_gold

@@ -23,8 +23,9 @@
 with contract_names as (
     select distinct {{ normalize_name('supplier_name') }} as normalized_name
     from {{ ref('slv_contracts') }}
-    where supplier_abn = 'UNKNOWN'
-      and supplier_name <> 'Unknown'
+    where
+        supplier_abn = 'UNKNOWN'
+        and supplier_name <> 'Unknown'
 ),
 
 register as (
@@ -37,9 +38,9 @@ matched as (
     select
         c.normalized_name,
         count(distinct r.abn) as n_abns,
-        max(r.abn)            as matched_abn
-    from contract_names c
-    join register r on r.normalized_name = c.normalized_name
+        max(r.abn) as matched_abn
+    from contract_names as c
+    inner join register as r on c.normalized_name = r.normalized_name
     group by c.normalized_name
 )
 

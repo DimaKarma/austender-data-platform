@@ -31,14 +31,14 @@
     )
 }}
 
-select
-    supplier_key,
-    supplier_name,
-    supplier_abn,
-    abr_entity_name,
-    abr_entity_type,
-    abr_abn_status,
-    supplier_abn_is_placeholder
-from {{ ref('dim_supplier') }}
+    select
+        supplier_key,
+        supplier_name,
+        supplier_abn,
+        abr_entity_name,
+        abr_entity_type,
+        abr_abn_status,
+        supplier_abn_is_placeholder
+    from {{ ref('dim_supplier') }}
 
 {% endsnapshot %}

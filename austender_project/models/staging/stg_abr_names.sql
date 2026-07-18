@@ -15,9 +15,10 @@
 {{ config(materialized=('view' if target.name == 'ci' else 'table')) }}
 
 select
-    {{ clean_string('abn') }}          as abn,
-    {{ clean_string('entity_name') }}  as entity_name,
-    {{ clean_string('name_type') }}    as name_type
+    {{ clean_string('abn') }} as abn,
+    {{ clean_string('entity_name') }} as entity_name,
+    {{ clean_string('name_type') }} as name_type
 from {{ source('abr_bronze', 'raw_abr_entity') }}
-where abn is not null
-  and entity_name is not null
+where
+    abn is not null
+    and entity_name is not null

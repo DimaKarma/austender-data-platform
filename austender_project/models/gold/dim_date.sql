@@ -24,15 +24,15 @@ with spine as (
 
 select
     cast(to_char(date_day, 'YYYYMMDD') as integer) as date_key,
-    date_day                                       as full_date,
-    year(date_day)                                 as year,
-    quarter(date_day)                              as quarter,
-    month(date_day)                                as month,
-    monthname(date_day)                            as month_name,
-    day(date_day)                                  as day_of_month,
-    dayofweek(date_day)                            as day_of_week,
-    dayname(date_day)                              as day_name,
+    date_day as full_date,
+    year(date_day) as year,
+    quarter(date_day) as quarter,
+    month(date_day) as month,
+    monthname(date_day) as month_name,
+    day(date_day) as day_of_month,
+    dayofweek(date_day) as day_of_week,
+    dayname(date_day) as day_name,
     -- dayname is independent of the session WEEK_START parameter; dayofweek is
     -- not (its numbering shifts), so key the weekend flag off the name.
-    (dayname(date_day) in ('Sat', 'Sun'))          as is_weekend
+    (dayname(date_day) in ('Sat', 'Sun')) as is_weekend
 from spine

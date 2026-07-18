@@ -19,15 +19,16 @@
 with abn_keyed as (
     select distinct supplier_entity_key
     from {{ ref('dim_supplier') }}
-    where abn_source = 'stated'
-      and not supplier_abn_is_placeholder
-      and abr_entity_name is not null
+    where
+        abn_source = 'stated'
+        and not supplier_abn_is_placeholder
+        and abr_entity_name is not null
 )
 
 select
     d.supplier_key,
     d.supplier_name,
     d.supplier_entity_key
-from {{ ref('dim_supplier') }} d
-join abn_keyed k on d.supplier_entity_key = k.supplier_entity_key
+from {{ ref('dim_supplier') }} as d
+inner join abn_keyed as k on d.supplier_entity_key = k.supplier_entity_key
 where d.abn_source = 'abr_name_match'

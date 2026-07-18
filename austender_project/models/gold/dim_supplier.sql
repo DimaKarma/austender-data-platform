@@ -43,17 +43,18 @@ resolved as (
         s.supplier_abn,
         case
             when s.supplier_abn <> 'UNKNOWN' then s.supplier_abn
-            when l.matched_abn is not null   then l.matched_abn
+            when l.matched_abn is not null then l.matched_abn
         end as resolved_abn,
         case
             when s.supplier_abn <> 'UNKNOWN' then 'stated'
-            when l.matched_abn is not null   then 'abr_name_match'
+            when l.matched_abn is not null then 'abr_name_match'
             else 'none'
         end as abn_source
-    from suppliers s
-    left join name_lookup l
-      on {{ normalize_name('s.supplier_name') }} = l.normalized_name
-     and s.supplier_abn = 'UNKNOWN'
+    from suppliers as s
+    left join name_lookup as l
+        on
+            {{ normalize_name('s.supplier_name') }} = l.normalized_name
+            and s.supplier_abn = 'UNKNOWN'
 ),
 
 abr as (
@@ -67,9 +68,9 @@ checked as (
         r.supplier_abn,
         r.resolved_abn,
         r.abn_source,
-        a.entity_name       as abr_entity_name,
-        a.entity_type_text  as abr_entity_type,
-        a.abn_status        as abr_abn_status,
+        a.entity_name as abr_entity_name,
+        a.entity_type_text as abr_entity_type,
+        a.abn_status as abr_abn_status,
 
         -- The STATED ABN belongs to a government body that is not this supplier:
         -- an agency's own ABN standing in for a real one. Only applies to stated
@@ -81,10 +82,10 @@ checked as (
             and a.is_government_entity
             and {{ normalize_name('r.supplier_name') }} <> {{ normalize_name('a.entity_name') }},
             false
-        )                   as supplier_abn_is_placeholder
-    from resolved r
-    left join abr a
-      on r.resolved_abn = a.abn
+        ) as supplier_abn_is_placeholder
+    from resolved as r
+    left join abr as a
+        on r.resolved_abn = a.abn
 ),
 
 keyed as (
@@ -96,8 +97,9 @@ keyed as (
         -- cannot pull a possible false positive into a real supplier's numbers.
         -- The name fallback over-splits, which is the recoverable direction.
         case
-            when abn_source = 'stated'
-                 and abr_entity_name is not null and not supplier_abn_is_placeholder
+            when
+                abn_source = 'stated'
+                and abr_entity_name is not null and not supplier_abn_is_placeholder
                 then 'ABN:' || supplier_abn
             else 'NAME:' || {{ normalize_name('supplier_name') }}
         end as entity_business_key,
@@ -107,8 +109,9 @@ keyed as (
         -- across the two, or a placeholder row would be labelled with the
         -- agency's name it is standing in for.
         case
-            when abn_source = 'stated'
-                 and abr_entity_name is not null and not supplier_abn_is_placeholder
+            when
+                abn_source = 'stated'
+                and abr_entity_name is not null and not supplier_abn_is_placeholder
                 then abr_entity_name
             else supplier_name
         end as entity_name_candidate
@@ -142,8 +145,8 @@ select
     k.abr_abn_status,
     k.supplier_abn_is_placeholder,
 
-    {{ dbt_utils.generate_surrogate_key(['k.entity_business_key']) }}             as supplier_entity_key,
+    {{ dbt_utils.generate_surrogate_key(['k.entity_business_key']) }} as supplier_entity_key,
     e.supplier_entity_name
-from keyed k
-join entity_names e
-  on k.entity_business_key = e.entity_business_key
+from keyed as k
+inner join entity_names as e
+    on k.entity_business_key = e.entity_business_key

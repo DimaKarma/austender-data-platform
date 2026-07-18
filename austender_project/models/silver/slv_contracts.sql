@@ -14,7 +14,8 @@ with staged as (
 
 deduped as (
     -- one contract = one row; on duplicates keep the latest load
-    select *,
+    select
+        *,
         row_number() over (
             partition by contract_id
             order by loaded_at desc nulls last
@@ -33,13 +34,13 @@ cleaned as (
         -- that contract's spend attributable instead of dropping it, and keeps
         -- fact and dimensions consistent by construction. (0 null names today,
         -- so this is output-preserving now and a guard against drift.)
-        coalesce(agency_name, 'Unknown')           as agency_name,
-        coalesce(agency_abn, 'UNKNOWN')            as agency_abn,
-        coalesce(supplier_name, 'Unknown')         as supplier_name,
-        coalesce(supplier_abn, 'UNKNOWN')          as supplier_abn,
-        coalesce(category_name, 'Unknown')         as category_name,
-        coalesce(category_unspsc, 'UNKNOWN')       as category_unspsc,
-        coalesce(procurement_method, 'Unknown')    as procurement_method,
+        coalesce(agency_name, 'Unknown') as agency_name,
+        coalesce(agency_abn, 'UNKNOWN') as agency_abn,
+        coalesce(supplier_name, 'Unknown') as supplier_name,
+        coalesce(supplier_abn, 'UNKNOWN') as supplier_abn,
+        coalesce(category_name, 'Unknown') as category_name,
+        coalesce(category_unspsc, 'UNKNOWN') as category_unspsc,
+        coalesce(procurement_method, 'Unknown') as procurement_method,
         contract_description,
         source_url,
         contract_value,
@@ -50,9 +51,10 @@ cleaned as (
         datediff('day', contract_start_date, contract_end_date) as duration_days,
         loaded_at
     from deduped
-    where _rn = 1
-      and contract_value is not null
-      and contract_value > 0
+    where
+        _rn = 1
+        and contract_value is not null
+        and contract_value > 0
 )
 
 select * from cleaned

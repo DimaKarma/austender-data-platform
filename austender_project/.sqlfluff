@@ -1,0 +1,26 @@
+[sqlfluff]
+dialect = snowflake
+templater = dbt
+max_line_length = 100
+# Keep the ruleset pragmatic, not maximal: exclude rules that fight dbt idioms or
+# are pure preference noise on a small, already-consistent codebase.
+exclude_rules = RF01, RF04, ST06, ST07, AM03, CP03, LT05, LT09
+
+[sqlfluff:templater:dbt]
+project_dir = .
+# profiles_dir intentionally omitted — follow DBT_PROFILES_DIR (CI renders
+# profiles.example.yml, whose default target `ci` has connectable creds there).
+
+[sqlfluff:indentation]
+indented_joins = false
+indented_using_on = true
+
+# Keywords lower-case, identifiers as written.
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.functions]
+capitalisation_policy = lower
+
+[sqlfluff:rules:capitalisation.literals]
+capitalisation_policy = lower

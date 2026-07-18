@@ -15,8 +15,8 @@ with fact as (
 
 mart as (
     select
-        sum(total_spend)                          as mart_total,
-        sum(attributable_spend)                   as mart_attributable
+        sum(total_spend) as mart_total,
+        sum(attributable_spend) as mart_attributable
     from {{ ref('rpt_supplier_spend') }}
 )
 

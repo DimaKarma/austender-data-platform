@@ -25,7 +25,8 @@ select
     supplier_entity_name,
     count(distinct supplier_abn) as trustworthy_abns
 from {{ ref('dim_supplier') }}
-where abr_entity_name is not null
-  and not supplier_abn_is_placeholder
+where
+    abr_entity_name is not null
+    and not supplier_abn_is_placeholder
 group by supplier_entity_key, supplier_entity_name
 having count(distinct supplier_abn) > 1

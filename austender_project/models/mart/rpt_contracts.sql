@@ -69,7 +69,7 @@ select
 
     -- time
     f.publish_date,
-    d.year                                          as publish_year,
+    d.year as publish_year,
     f.contract_start_date,
     f.contract_end_date,
     f.duration_days,
@@ -78,25 +78,24 @@ select
         f.contract_start_date <= current_date()
         and (f.contract_end_date is null or f.contract_end_date >= current_date()),
         false
-    )                                               as is_active,
+    ) as is_active,
 
     -- the measure, and the one gate that governs how it may be summed
     f.contract_value,
     coalesce(
         not s.supplier_abn_is_placeholder and ns.normalized_name is null,
         false
-    )                                               as is_attributable,
+    ) as is_attributable,
 
     -- why a row is not attributable, for drill-down and trust
     case
         when s.supplier_abn_is_placeholder then 'agency ABN placeholder'
         when ns.normalized_name is not null then 'non-supplier: ' || ns.category
-        else null
-    end                                             as unattributable_reason
+    end as unattributable_reason
 
-from fct f
-left join supplier s      on f.supplier_key = s.supplier_key
-left join non_supplier ns on s.supplier_name_norm = ns.normalized_name
-left join agency a        on f.agency_key = a.agency_key
-left join category c       on f.category_key = c.category_key
-left join dates d          on f.publish_date_key = d.date_key
+from fct as f
+left join supplier as s on f.supplier_key = s.supplier_key
+left join non_supplier as ns on s.supplier_name_norm = ns.normalized_name
+left join agency as a on f.agency_key = a.agency_key
+left join category as c on f.category_key = c.category_key
+left join dates as d on f.publish_date_key = d.date_key

@@ -15,10 +15,10 @@ with c as (
 select
     agency_name,
     publish_year,
-    count(*)                                                       as contracts,
-    count(distinct supplier_entity_key)                            as suppliers,
-    sum(contract_value)                                            as total_spend,
-    sum(case when is_attributable then contract_value else 0 end)  as attributable_spend
+    count(*) as contracts,
+    count(distinct supplier_entity_key) as suppliers,
+    sum(contract_value) as total_spend,
+    sum(case when is_attributable then contract_value else 0 end) as attributable_spend
 from c
 where agency_name is not null
 group by agency_name, publish_year

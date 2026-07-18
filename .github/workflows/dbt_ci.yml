@@ -36,8 +36,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dbt
-        run: pip install dbt-snowflake
+      - name: Install dbt + sqlfluff
+        run: pip install dbt-snowflake sqlfluff sqlfluff-templater-dbt
 
       - name: Write Snowflake private key
         # The secret holds the PKCS#8 key base64-encoded, so newlines survive.
@@ -48,6 +48,13 @@ jobs:
 
       - name: dbt deps
         run: dbt deps
+
+      - name: sqlfluff lint
+        # SQL style gate. The dbt templater compiles models, so it runs after deps
+        # and uses the ci target's connection.
+        run: sqlfluff lint models/ tests/ snapshots/ --templater dbt
+        env:
+          DBT_TARGET: ci
 
       - name: dbt source freshness
         # Exercises the freshness config (was declared but never run).
