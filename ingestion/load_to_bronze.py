@@ -28,6 +28,8 @@ from pathlib import Path
 import snowflake.connector
 from dotenv import load_dotenv
 
+from snowflake_auth import auth_kwargs
+
 # Windows consoles default to a legacy code page and mangle non-ASCII output.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
@@ -41,13 +43,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("bronze_loader")
 
-REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]
+REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
 
 
 def get_connection() -> snowflake.connector.SnowflakeConnection:
-    """Build the connection from the environment. Passwords are never hardcoded."""
+    """Build the connection from the environment. Credentials are never hardcoded."""
     load_dotenv()  # picks up ./.env when present
     missing = [v for v in REQUIRED_ENV if not os.getenv(v)]
+    if not os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH") and not os.getenv("SNOWFLAKE_PASSWORD"):
+        missing.append("SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY_PATH")
     if missing:
         log.error("Missing environment variables: %s", ", ".join(missing))
         log.error("Copy .env.example to .env and fill in the credentials.")
@@ -56,12 +60,12 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
     return snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
         role=os.getenv("SNOWFLAKE_ROLE", "AUSTENDER_DE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "AUSTENDER_WH"),
         database=os.getenv("SNOWFLAKE_DATABASE", "AUSTENDER_DB"),
         schema=os.getenv("SNOWFLAKE_SCHEMA", "BRONZE"),
         client_session_keep_alive=True,
+        **auth_kwargs(),
     )
 
 

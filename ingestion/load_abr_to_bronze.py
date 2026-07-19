@@ -41,6 +41,8 @@ from xml.etree import ElementTree as ET
 import snowflake.connector
 from dotenv import load_dotenv
 
+from snowflake_auth import auth_kwargs
+
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
@@ -67,7 +69,7 @@ PARTS = {
 COLUMNS = ["abn", "abn_status", "abn_status_from_date", "entity_type_ind",
            "entity_type_text", "entity_name", "name_type", "state", "postcode"]
 
-REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD"]
+REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
 
 
 # --- download ---------------------------------------------------------
@@ -184,12 +186,12 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
     return snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
-        password=os.environ["SNOWFLAKE_PASSWORD"],
         role=os.getenv("SNOWFLAKE_ROLE", "AUSTENDER_DE"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "AUSTENDER_WH"),
         database=os.getenv("SNOWFLAKE_DATABASE", "AUSTENDER_DB"),
         schema=os.getenv("SNOWFLAKE_SCHEMA", "BRONZE"),
         client_session_keep_alive=True,
+        **auth_kwargs(),
     )
 
 

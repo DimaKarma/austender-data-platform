@@ -37,6 +37,9 @@ from pathlib import Path
 import snowflake.connector
 from dotenv import dotenv_values
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "ingestion"))
+from snowflake_auth import auth_kwargs  # noqa: E402
+
 # Windows consoles default to a legacy code page and mangle non-ASCII output.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
@@ -83,8 +86,9 @@ def load_env() -> dict[str, str]:
 
     # This check is the reason the script exists: it waits for credentials and
     # says exactly what is missing instead of failing somewhere deeper.
-    blank = [k for k in ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD")
-             if not env.get(k)]
+    blank = [k for k in ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER") if not env.get(k)]
+    if not env.get("SNOWFLAKE_PASSWORD") and not env.get("SNOWFLAKE_PRIVATE_KEY_PATH"):
+        blank.append("SNOWFLAKE_PASSWORD or SNOWFLAKE_PRIVATE_KEY_PATH")
     if blank:
         raise BootstrapError(
             "Not set in ingestion/.env: " + ", ".join(blank) + "\n\n"
@@ -136,9 +140,9 @@ def run_sql_file(env: dict[str, str], path: Path, role: str,
     conn = snowflake.connector.connect(
         account=env["SNOWFLAKE_ACCOUNT"],
         user=env["SNOWFLAKE_USER"],
-        password=env["SNOWFLAKE_PASSWORD"],
         role=role,
         client_session_keep_alive=True,
+        **auth_kwargs(env),
     )
     try:
         # execute_string splits on ';' and honors USE ROLE between statements.
@@ -181,7 +185,7 @@ austender:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
-      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      {DEV_AUTH}
       role: AUSTENDER_DE
       warehouse: AUSTENDER_WH
       database: AUSTENDER_DB
@@ -201,11 +205,17 @@ austender:
 """
 
 
-def step_dbt_profile() -> Path:
+def step_dbt_profile(env: dict[str, str]) -> Path:
     """Write profiles.yml next to the dbt project rather than into ~/.dbt —
-    the global file may serve other projects and must not be clobbered."""
+    the global file may serve other projects and must not be clobbered.
+    The dev target uses key-pair when SNOWFLAKE_PRIVATE_KEY_PATH is set, else a
+    password — matching what the loaders do."""
+    if env.get("SNOWFLAKE_PRIVATE_KEY_PATH"):
+        dev_auth = "private_key_path: \"{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH') }}\""
+    else:
+        dev_auth = "password: \"{{ env_var('SNOWFLAKE_PASSWORD') }}\""
     target = DBT_DIR / "profiles.yml"
-    target.write_text(PROFILE_TEMPLATE, encoding="utf-8")
+    target.write_text(PROFILE_TEMPLATE.replace("{DEV_AUTH}", dev_auth), encoding="utf-8")
     log.info("Generated profiles.yml: %s", target.relative_to(ROOT))
     return target
 
@@ -289,7 +299,7 @@ def main() -> None:
         step_bronze(env)
 
         if do_dbt:
-            step_dbt_profile()
+            step_dbt_profile(env)
         if do_load:
             step_load(env, csv_path)
         if do_abr:
