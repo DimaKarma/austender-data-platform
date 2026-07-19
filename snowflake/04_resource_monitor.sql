@@ -23,9 +23,10 @@ CREATE RESOURCE MONITOR IF NOT EXISTS austender_rm
              ON 100 PERCENT DO SUSPEND           -- let running queries finish, then stop
              ON 110 PERCENT DO SUSPEND_IMMEDIATE; -- hard stop
 
--- Attach to both project warehouses. COMPUTE_WH and the Snowflake-managed
+-- Attach to all three project warehouses. COMPUTE_WH and the Snowflake-managed
 -- warehouses are left alone.
 ALTER WAREHOUSE austender_wh    SET RESOURCE_MONITOR = austender_rm;
 ALTER WAREHOUSE austender_ci_wh SET RESOURCE_MONITOR = austender_rm;
+ALTER WAREHOUSE austender_bi_wh SET RESOURCE_MONITOR = austender_rm;
 
 SELECT 'Resource monitor and warehouse guards are ready' AS status;

@@ -200,7 +200,8 @@ the **Actions → Deploy to prod → Run workflow** button.
 
 ### 3. BI
 Point Power BI / Tableau at the `AUSTENDER_DB.MART` schema (role
-`austender_analyst`, read-only). The mart is a thin set of reporting views over
+`austender_analyst`, read-only, on its own `AUSTENDER_BI_WH` warehouse so BI
+queries never queue behind the ETL). The mart is a thin set of reporting views over
 the gold star with the data-quality caveats already applied and two spend
 measures defined once, so the correct query is the default rather than a footnote:
 

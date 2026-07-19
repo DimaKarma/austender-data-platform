@@ -29,6 +29,14 @@ CREATE WAREHOUSE IF NOT EXISTS austender_ci_wh
          INITIALLY_SUSPENDED = TRUE
     COMMENT = 'Compute for CI/CD dbt runs';
 
+-- A separate warehouse for BI so analyst queries never queue behind the ETL.
+CREATE WAREHOUSE IF NOT EXISTS austender_bi_wh
+    WITH WAREHOUSE_SIZE = 'XSMALL'
+         AUTO_SUSPEND = 60
+         AUTO_RESUME = TRUE
+         INITIALLY_SUSPENDED = TRUE
+    COMMENT = 'Compute for analyst / BI queries against the Mart';
+
 -- 2. Database + Medallion schemas --------------------------------------
 CREATE DATABASE IF NOT EXISTS austender_db
     COMMENT = 'AusTender — Australian federal contracts';
@@ -90,7 +98,7 @@ GRANT SELECT ON FUTURE TABLES IN SCHEMA austender_db.bronze TO ROLE austender_ci
 --     ownership chaining (view and gold tables share owner austender_de), so the
 --     analyst can query the views without ever touching the star directly, and
 --     cannot run a naive SUM over fct_contracts.
-GRANT USAGE ON WAREHOUSE austender_wh TO ROLE austender_analyst;
+GRANT USAGE ON WAREHOUSE austender_bi_wh TO ROLE austender_analyst;
 GRANT USAGE ON DATABASE  austender_db TO ROLE austender_analyst;
 GRANT USAGE ON SCHEMA    austender_db.mart TO ROLE austender_analyst;
 GRANT SELECT ON ALL VIEWS     IN SCHEMA austender_db.mart TO ROLE austender_analyst;

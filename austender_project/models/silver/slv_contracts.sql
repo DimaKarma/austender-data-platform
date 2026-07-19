@@ -13,12 +13,21 @@ with staged as (
 ),
 
 deduped as (
-    -- one contract = one row; on duplicates keep the latest load
+    -- one contract = one row; on duplicates keep the latest load.
+    -- loaded_at alone is not a deterministic tiebreak: it is assigned once per
+    -- COPY, so all rows from one load share it, and two rows with the same
+    -- contract_id in a single file would pick a random winner. The extra sort
+    -- keys give a total, stable order. (cnid is unique in today's file, so this
+    -- never fires — it is a guard for intra-file duplicates under delta loads.)
     select
         *,
         row_number() over (
             partition by contract_id
-            order by loaded_at desc nulls last
+            order by
+                loaded_at desc nulls last,
+                contract_value desc nulls last,
+                contract_end_date desc nulls last,
+                coalesce(source_url, '')
         ) as _rn
     from staged
     where contract_id is not null
