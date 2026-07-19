@@ -38,6 +38,10 @@ Medallion Architecture, RBAC, CI/CD**.
   or a cancellation is preserved instead of overwritten on rebuild.
 - **dbt Core** — sources + freshness, staging/silver/gold models, surrogate keys,
   an **incremental** fact table, tests (`unique`, `not_null`, `relationships`), macros, `dbt_utils`.
+- **Delta ingestion** — the loader MERGEs the source snapshot into Bronze on the
+  notice key and refreshes `_loaded_at` only for rows that actually changed, so
+  re-loading the same file is a no-op and the incremental fact merges just the
+  delta (0 rows when nothing changed) instead of the whole table every run.
 - **CI/CD** — GitHub Actions. **CI**: `dbt build` (run + test) on every PR, into
   isolated `CI_*` schemas so a PR run never rebuilds the SILVER/GOLD/MART that BI
   reads. **CD**: a manual, gated `workflow_dispatch` **Deploy** button rebuilds the
@@ -161,6 +165,8 @@ snowflake/02_bronze_table_stage.sql
 ```
 ```bash
 cd ingestion && python load_to_bronze.py --file ../AustralianFederalContracts.csv
+# Delta by default: re-running MERGEs the snapshot and touches only changed rows.
+# Use --full-reload to force a clean TRUNCATE+INSERT (first load or a reset).
 
 cp austender_project/profiles.example.yml ~/.dbt/profiles.yml   # or use env_var
 export SNOWFLAKE_ACCOUNT=... SNOWFLAKE_USER=... SNOWFLAKE_PASSWORD=...
@@ -451,6 +457,6 @@ transform-then-load pipeline; a few translate differently into a medallion one:
 | Analysis decision | What the pipeline does instead |
 |---|---|
 | Delete the 92 rows with a NULL `categoryunspsc` | Keep them, coalesce to `'UNKNOWN'`. Bronze is as-is by contract; deleting source rows costs auditability and reload-safety for a 0.04% cosmetic gain |
-| Hand-correct the 9 placeholder values | Surface them with a warn-level test; manual edits do not survive `TRUNCATE + COPY` |
+| Hand-correct the 9 placeholder values | Surface them with a warn-level test; manual edits do not survive a reload — the loader MERGEs Bronze back to the source snapshot |
 | Exclude `supplierid` as redundant | Correct — it is derivable (the rule `ABN else name` reproduces it for 241,164 of 241,164 rows), so it is not carried past staging |
 | Fill missing ABNs by parsing the ABR | Still the right answer, and now better motivated: it is the only way to resolve the shared-ABN problem above. It belongs as a second Bronze source and a join, not an in-place patch |

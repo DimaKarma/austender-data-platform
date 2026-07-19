@@ -45,6 +45,56 @@ log = logging.getLogger("bronze_loader")
 
 REQUIRED_ENV = ["SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER"]
 
+# The 15 source columns, in COPY order. cnid is the natural key of a notice.
+BIZ_COLS = [
+    "agencyname", "value", "suppliername", "description", "publishdate",
+    "contractstart", "contractend", "procurementmethod", "category",
+    "agencyabn", "supplierabn", "categoryunspsc", "cnid", "supplierid", "sourceurl",
+]
+
+
+def _snapshot_merge_sql(target: str, source: str) -> str:
+    """Upsert half of the delta load: a MERGE on cnid.
+
+    The file is the complete current state, so: insert new notices and update
+    changed ones. Crucially, _loaded_at is refreshed ONLY for rows that actually
+    changed (WHEN MATCHED carries a change predicate), so re-loading unchanged data
+    is a true no-op and the incremental fact / SCD2 snapshot downstream process
+    only the delta. current_timestamp() is statement-scoped, so every row touched
+    by one load shares one watermark. Source-side removals are handled separately
+    by _snapshot_delete_sql — Snowflake MERGE has no "not matched by source" clause.
+    """
+    change_cols = [c for c in BIZ_COLS if c != "cnid"]
+    changed = " or ".join(f"t.{c} is distinct from s.{c}" for c in change_cols)
+    set_clause = ", ".join(f"t.{c} = s.{c}" for c in BIZ_COLS)
+    insert_cols = ", ".join(BIZ_COLS)
+    insert_vals = ", ".join(f"s.{c}" for c in BIZ_COLS)
+    return f"""
+        MERGE INTO {target} AS t
+        USING {source} AS s ON t.cnid = s.cnid
+        WHEN MATCHED AND ({changed}) THEN UPDATE SET
+            {set_clause},
+            t._loaded_at = current_timestamp(),
+            t._source_file = s._source_file
+        WHEN NOT MATCHED THEN
+            INSERT ({insert_cols}, _loaded_at, _source_file)
+            VALUES ({insert_vals}, current_timestamp(), s._source_file)
+    """
+
+
+def _snapshot_delete_sql(target: str, source: str) -> str:
+    """Delete half of the delta load: drop notices the snapshot no longer contains.
+
+    Run in the same transaction as the MERGE so bronze is never briefly inconsistent.
+    NOT EXISTS (not NOT IN) so a NULL cnid can never make the whole predicate NULL
+    and wipe the table. This is why delta mode requires a COMPLETE snapshot: a
+    partial file would delete every notice it omits.
+    """
+    return f"""
+        DELETE FROM {target} AS t
+        WHERE NOT EXISTS (SELECT 1 FROM {source} AS s WHERE s.cnid = t.cnid)
+    """
+
 
 def get_connection() -> snowflake.connector.SnowflakeConnection:
     """Build the connection from the environment. Credentials are never hardcoded."""
@@ -69,7 +119,14 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
     )
 
 
-def load_csv_to_bronze(csv_path: Path, truncate: bool = True) -> None:
+def load_csv_to_bronze(csv_path: Path, mode: str = "delta") -> None:
+    """Load the AusTender snapshot into bronze.
+
+    mode="delta" (default): the file is the complete current state, MERGEd on cnid
+    so only genuinely new/changed/removed notices touch bronze — re-loading the same
+    file is a no-op and downstream incrementals process only the delta. mode="full":
+    the legacy TRUNCATE+INSERT replace, kept for a clean first load or a reset.
+    """
     if not csv_path.exists():
         log.error("File not found: %s", csv_path)
         sys.exit(1)
@@ -147,17 +204,27 @@ def load_csv_to_bronze(csv_path: Path, truncate: bool = True) -> None:
                 log.error("COPY loaded %s of %s parsed rows — aborting.", loaded, parsed)
                 sys.exit(1)
 
-        # 4. Publish atomically: only reached because COPY succeeded. When
-        #    truncate is off (append mode) just move the new rows across.
-        if truncate:
-            log.info("Publishing: replace raw_contract_data with the loaded rows")
+        # 4. Publish. Only reached because COPY succeeded.
+        if mode == "delta":
+            # Snapshot upsert + delete against the live table, but refresh
+            # _loaded_at only for rows that actually changed (see the SQL builders).
+            # Re-loading the same file writes nothing. Both statements run in one
+            # transaction so bronze is never briefly inconsistent.
+            log.info("Publishing (delta): MERGE + prune snapshot into raw_contract_data")
+            cur.execute("BEGIN")
+            cur.execute(_snapshot_merge_sql("raw_contract_data", "raw_contract_data_load"))
+            # MERGE result set: (rows inserted, rows updated).
+            merged = cur.fetchone()
+            cur.execute(_snapshot_delete_sql("raw_contract_data", "raw_contract_data_load"))
+            deleted = cur.fetchone()  # (rows deleted,)
+            cur.execute("COMMIT")
+            log.info("Delta result: inserted/updated=%s, deleted=%s", merged, deleted)
+        else:
+            log.info("Publishing (full): replace raw_contract_data with the loaded rows")
             cur.execute("BEGIN")
             cur.execute("TRUNCATE TABLE raw_contract_data")
             cur.execute("INSERT INTO raw_contract_data SELECT * FROM raw_contract_data_load")
             cur.execute("COMMIT")
-        else:
-            log.info("Publishing (append mode): add the loaded rows")
-            cur.execute("INSERT INTO raw_contract_data SELECT * FROM raw_contract_data_load")
 
         cnt = cur.execute("SELECT COUNT(*) FROM raw_contract_data").fetchone()[0]
         log.info("Success: bronze.raw_contract_data now holds %s rows.", f"{cnt:,}")
@@ -176,10 +243,11 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Load the AusTender CSV into the Bronze layer")
     p.add_argument("--file", default="../AustralianFederalContracts.csv",
                    help="Path to the CSV (default: ../AustralianFederalContracts.csv)")
-    p.add_argument("--no-truncate", action="store_true",
-                   help="Do not clear the table before loading (append mode)")
+    p.add_argument("--full-reload", action="store_true",
+                   help="Replace the table (TRUNCATE+INSERT) instead of a delta MERGE. "
+                        "Use for a clean first load or a reset; delta is the default.")
     args = p.parse_args()
-    load_csv_to_bronze(Path(args.file), truncate=not args.no_truncate)
+    load_csv_to_bronze(Path(args.file), mode="full" if args.full_reload else "delta")
 
 
 if __name__ == "__main__":
