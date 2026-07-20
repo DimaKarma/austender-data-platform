@@ -27,7 +27,9 @@ Medallion Architecture, RBAC, CI/CD**.
 - **Reference-data enrichment** — the Australian Business Register loaded as a
   second Bronze source (~20.4M ABNs) to check the contracts' supplier ABNs
   against the authority that issues them.
-- **Snowflake** — warehouse, database, schemas, file format, internal stage, `COPY INTO`.
+- **Snowflake** — warehouse, database, schemas, file format, internal stage, `COPY INTO`,
+  and the native incremental primitives (**Streams, Tasks, Dynamic Tables**) shown
+  alongside the dbt/Python path in `snowflake/05_native_incremental.sql`.
 - **RBAC** — functional roles (`de` / `analyst` / `ci`), a hierarchy under `SYSADMIN`,
   and least privilege: the analyst sees only the Mart, and the CI role is granted
   nothing on the prod star (it can read Bronze and build its own `CI_*` schemas).
@@ -103,7 +105,10 @@ Med-Pet/
 ├── bootstrap.py                     # from zero: infra → RBAC → bronze → dbt build
 ├── snowflake/
 │   ├── 01_setup_infra_rbac.sql      # warehouse, db, schemas, roles, RBAC grants
-│   └── 02_bronze_table_stage.sql    # bronze table, file format, stage
+│   ├── 02_bronze_table_stage.sql    # bronze table, file format, stage
+│   ├── 03_abr_bronze.sql            # ABR bronze table + stage
+│   ├── 04_resource_monitor.sql      # 50-credit monthly monitor on the warehouses
+│   └── 05_native_incremental.sql    # Snowflake-native incremental: Stream+Task, Dynamic Table
 ├── ingestion/
 │   ├── load_to_bronze.py            # ELT: local CSV → PUT → COPY INTO bronze
 │   ├── load_abr_to_bronze.py        # ABR reference data: download → stream XML → bronze
@@ -255,6 +260,27 @@ Verified against the live account: the mart reads, the gold star and silver are
 denied. The analyst reaches the star's data only through the mart views
 (ownership chaining), never directly — so it cannot run a naive `SUM` over the
 raw fact.
+
+## Incremental, three ways (and when to use each)
+
+The production path here is delta ingestion in Python (a MERGE loader) feeding an
+incremental dbt fact — portable, tested, and version-controlled. `snowflake/05_native_incremental.sql`
+also builds the two **Snowflake-native** incremental patterns next to it, so the
+trade-off is explicit rather than implied. All three live in a dedicated
+`NATIVE_DEMO` schema and never touch the dbt-managed star.
+
+| Pattern | What it is | Reach for it when |
+|---|---|---|
+| **dbt incremental** | `fct_contracts` merges only rows past a `loaded_at` watermark | complex multi-model DAGs, tests, docs, CI/CD, portability |
+| **Stream + Task** | a Stream captures row changes on bronze; a Task MERGEs them into a native Silver table on a schedule, gated by `SYSTEM$STREAM_HAS_DATA` | event-style "process what changed" inside Snowflake, or procedural logic that isn't a single `SELECT` |
+| **Dynamic Table** | a declarative `SELECT` Snowflake keeps fresh to a `TARGET_LAG` — no orchestration code | one straightforward transform/aggregate you want maintained for free |
+
+The Stream + Task pipeline is verified end to end: inserting, updating, then
+deleting a test notice in bronze flows through the Stream and the Task's MERGE into
+`slv_contracts_native` as an insert, an update, then a delete (the Stream surfaces
+an update as a delete+insert pair; ranking each key by `loaded_at` keeps its final
+state). The task and dynamic table are left **suspended** so the trial spends no
+scheduled compute — resume them to activate.
 
 ## Data quality notes
 
