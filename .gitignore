@@ -31,6 +31,13 @@ ingestion/abr_data/
 # reference material / source documents — not part of the pipeline
 *.pdf
 
+# repomix: repo-bundle output for feeding an LLM — a build artifact, not a deliverable
+repomix-output.*
+repomix.config.json
+# npm artifacts (this is not a Node project)
+node_modules/
+package-lock.json
+
 # OS
 .DS_Store
 
