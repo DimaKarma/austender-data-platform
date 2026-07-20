@@ -4,10 +4,21 @@ sources:
   - name: bronze
     database: austender_db
     schema: bronze
-    description: "Raw layer — AusTender data loaded as-is by the Python loader."
+    description: >
+      Raw layer — AusTender data loaded as-is by the Python loader
+      (ingestion/load_to_bronze.py). Publishing is a MERGE on the notice key, and
+      _loaded_at is refreshed only for rows that actually changed, so re-ingesting
+      unchanged data is a no-op and the downstream incremental fact processes only
+      the delta.
     tables:
       - name: raw_contract_data
-        description: "Raw Australian federal contracts (CSV, 15 columns)."
+        description: >
+          Raw Australian federal contracts (CSV, 15 columns). The loader runs in
+          one of three modes: **incremental** — upload only rows newer than this
+          table's high-water mark (max publishdate), the cheapest steady-state
+          path and how you would page a live API; **delta** (default) — MERGE the
+          full snapshot on cnid, also catching in-place corrections and source-side
+          deletes; **full** — a TRUNCATE + INSERT reset. All three are idempotent.
         # Freshness keys off _loaded_at (our ingestion time), NOT publishdate.
         # This is deliberate: publishdate is a per-contract business date frozen
         # at 2011-11-11, so a freshness check on it would be permanently stale and

@@ -90,6 +90,13 @@ models:
       version. AusTender publishes amendments as separate notices
       (413292, 413292-A1, 413292-A2); each chain is collapsed to its latest
       amendment, since carrying every notice triple-counts amended contracts.
+
+      Incremental (MERGE on contract_id): each run reads only the notices whose
+      loaded_at is newer than the high-water mark already in the fact, then
+      re-collapses just the affected amendment chains. This does real work only
+      because ingestion is delta — the loader refreshes loaded_at solely for
+      changed rows, so a run over unchanged Bronze merges 0 rows instead of
+      rebuilding the whole table.
     columns:
       - name: contract_id
         description: "The contract (base notice id) — degenerate dimension and PK
