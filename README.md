@@ -247,6 +247,20 @@ ownership chaining (views and gold tables share owner `austender_de`), so the
 role can read the reports but a naive `SUM` over `fct_contracts` is denied
 outright — not discouraged, denied.
 
+**Column masking (Dynamic Data Masking).** `snowflake/01_setup_infra_rbac.sql`
+defines a masking policy on the supplier ABN: the engineer role sees it raw, every
+other role (the analyst) sees it partially masked (`XXXXXXXX` + last 3 digits). It
+is attached to `mart.rpt_contracts.supplier_abn` by a `post_hook` on that model, so
+it survives each `dbt build` (a `CREATE OR REPLACE VIEW` would otherwise drop it),
+and skipped on the CI target where the least-privilege role can't touch the policy.
+A row access policy is included as a second, illustrative pattern.
+Honest caveat: AusTender is **public** data (an ABN is an open business identifier),
+so this demonstrates the governance *mechanism* — in a regulated-PII setting the
+same policies would protect SSNs, dates of birth or diagnoses and restrict rows by
+entitlement. (Note: a human who holds both `austender_de` and `austender_analyst`
+must `USE SECONDARY ROLES NONE` to see the analyst's masked view, since a secondary
+`de` role would otherwise satisfy the policy's unmask condition.)
+
 ### Verifying RBAC (read this before concluding it is broken)
 
 Snowflake enables **secondary roles** by default (`DEFAULT_SECONDARY_ROLES = ALL`).

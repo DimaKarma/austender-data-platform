@@ -14,6 +14,16 @@
       which have no ABN for the register to catch (the known_non_suppliers seed).
 */
 
+-- Attach the supplier-ABN masking policy after every rebuild (a CREATE OR REPLACE
+-- VIEW drops the attachment). The {{ this }} stays a literal here so dbt renders it
+-- at run time with the resolved MART relation. Skipped on the `ci` target: a PR
+-- builds into CI_MART as the least-privilege ci role, which has no access to the
+-- mart.mask_* policy — masking is a prod governance concern, not a throwaway PR one.
+{{ config(
+    post_hook = "alter view {{ this }} modify column supplier_abn set masking policy mart.mask_supplier_abn force"
+        if target.name != 'ci' else none
+) }}
+
 with fct as (
     select * from {{ ref('fct_contracts') }}
 ),

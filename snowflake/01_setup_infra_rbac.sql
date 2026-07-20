@@ -116,8 +116,49 @@ GRANT ROLE austender_analyst TO USER YOUR_USERNAME;
 -- human user too only enables local `dbt build --target ci` testing.
 GRANT ROLE austender_ci      TO USER YOUR_USERNAME;
 
+-- 4. Data governance: column masking + row access policies -----------------
+--
+--    HONEST FRAMING: AusTender is PUBLIC data — an ABN is an open business
+--    identifier, not personal data — so the policies below protect nothing real.
+--    They demonstrate the Snowflake governance MECHANISM on this dataset. In a
+--    regulated-PII setting (e.g. health-insurance member data) you would apply
+--    the same Dynamic Data Masking to SSNs, dates of birth and diagnoses, and the
+--    same Row Access Policy to restrict rows by member, region or entitlement.
+--
+--    Owned by austender_de (created here as that role) so the dbt post-hook that
+--    attaches the masking policy — mart runs as austender_de both locally and on
+--    the deploy button — can apply it without an extra APPLY grant.
+USE ROLE austender_de;
+USE SCHEMA austender_db.mart;
+
+-- 4.1 Dynamic Data Masking: engineers see the raw supplier ABN; every other role
+--     (the BI analyst) sees it partially masked, last 3 digits preserved so the
+--     format stays recognizable. Attached to mart.rpt_contracts.supplier_abn by a
+--     post_hook on that model (a dbt CREATE OR REPLACE VIEW would otherwise drop
+--     the attachment on every build).
+CREATE MASKING POLICY IF NOT EXISTS mask_supplier_abn AS (val STRING) RETURNS STRING ->
+    CASE
+        WHEN IS_ROLE_IN_SESSION('AUSTENDER_DE') THEN val          -- engineers/admins: raw
+        WHEN val IS NULL OR val = 'UNKNOWN' THEN val              -- sentinel, nothing to hide
+        ELSE 'XXXXXXXX' || RIGHT(val, 3)                          -- others: partial mask
+    END;
+-- The post_hook effectively runs, on every build of rpt_contracts:
+--   ALTER VIEW mart.rpt_contracts
+--     MODIFY COLUMN supplier_abn SET MASKING POLICY mart.mask_supplier_abn FORCE;
+
+-- 4.2 Row Access Policy (illustrative — created, deliberately NOT applied, so the
+--     analyst keeps full visibility for spend analysis). The pattern: a boolean
+--     per row per role. Here a hypothetical external-partner role would see only
+--     rows already attributable to a named supplier; engineers see everything.
+CREATE ROW ACCESS POLICY IF NOT EXISTS rap_contracts_attributable_only
+    AS (is_attributable BOOLEAN) RETURNS BOOLEAN ->
+        IS_ROLE_IN_SESSION('AUSTENDER_DE') OR is_attributable;
+-- Apply it (when such a role exists) with:
+--   ALTER VIEW mart.rpt_contracts ADD ROW ACCESS POLICY mart.rap_contracts_attributable_only
+--     ON (is_attributable);
+
 -- Smoke check
 USE ROLE austender_de;
 USE WAREHOUSE austender_wh;
 USE DATABASE austender_db;
-SELECT 'Infrastructure and RBAC are ready' AS status;
+SELECT 'Infrastructure, RBAC and governance policies are ready' AS status;
