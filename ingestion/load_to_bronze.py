@@ -8,21 +8,26 @@ Mirrors the production pattern:
 
 Notes:
   * Credentials come from the environment / .env — no passwords in code.
-  * Idempotent: TRUNCATE + COPY, so a re-run does not duplicate rows.
+  * Idempotent: publishing is a MERGE on cnid, so a re-run never duplicates rows.
+  * Three load modes (see load_csv_to_bronze): incremental (delta on input),
+    delta (full-snapshot MERGE), full (TRUNCATE+INSERT reset).
   * Audit: the file name goes into _source_file, the timestamp comes from DEFAULT.
   * COPY returns load statistics (rows, errors) — logged.
 
 Usage:
     pip install -r ../requirements.txt
-    python load_to_bronze.py --file ../AustralianFederalContracts.csv
+    python load_to_bronze.py --file ../AustralianFederalContracts.csv          # delta
+    python load_to_bronze.py --file ../AustralianFederalContracts.csv --mode incremental
 ------------------------------------------------------------------
 """
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import snowflake.connector
@@ -51,6 +56,36 @@ BIZ_COLS = [
     "contractstart", "contractend", "procurementmethod", "category",
     "agencyabn", "supplierabn", "categoryunspsc", "cnid", "supplierid", "sourceurl",
 ]
+
+# publishdate is the incremental cursor. Format is ISO YYYY-MM-DD, so a plain
+# string comparison orders it correctly — no TO_DATE needed, and it mirrors how
+# AusTender's real OCDS API is paged (a publishDate cursor).
+PUBLISHDATE_IDX = BIZ_COLS.index("publishdate")
+
+
+def _filter_csv_by_watermark(src: Path, out: Path, watermark: str | None) -> tuple[int, int]:
+    """Stream `src` to `out`, keeping only rows whose publishdate >= watermark.
+
+    Returns (kept, total). watermark=None keeps everything (first load). The
+    comparison is `>=`, not `>`, so notices published on the boundary date that
+    arrived after the last load are not missed; the upsert MERGE makes re-reading
+    already-loaded boundary rows an idempotent no-op. Rows with an empty
+    publishdate sort below any real date and are skipped by an incremental pull —
+    a periodic `--mode delta` full pass reconciles those (there are none today).
+    """
+    total = kept = 0
+    with src.open("r", encoding="utf-8", newline="") as fin, \
+            out.open("w", encoding="utf-8", newline="") as fout:
+        reader = csv.reader(fin)
+        writer = csv.writer(fout)
+        writer.writerow(next(reader))  # header
+        for row in reader:
+            total += 1
+            if watermark is None or (len(row) > PUBLISHDATE_IDX
+                                     and row[PUBLISHDATE_IDX] >= watermark):
+                writer.writerow(row)
+                kept += 1
+    return kept, total
 
 
 def _snapshot_merge_sql(target: str, source: str) -> str:
@@ -120,12 +155,19 @@ def get_connection() -> snowflake.connector.SnowflakeConnection:
 
 
 def load_csv_to_bronze(csv_path: Path, mode: str = "delta") -> None:
-    """Load the AusTender snapshot into bronze.
+    """Load the AusTender data into bronze in one of three modes.
 
+    mode="incremental": delta on INPUT — read bronze's high watermark (max
+      publishdate) and upload/MERGE only the newer rows, so a run touches a few
+      hundred rows instead of re-reading the whole 72 MB file. Upsert only, no
+      prune. This is the cheapest steady-state mode and mirrors paging a real API
+      by publishDate. It cannot see in-place corrections that keep an old
+      publishdate — a periodic `delta` pass reconciles those.
     mode="delta" (default): the file is the complete current state, MERGEd on cnid
-    so only genuinely new/changed/removed notices touch bronze — re-loading the same
-    file is a no-op and downstream incrementals process only the delta. mode="full":
-    the legacy TRUNCATE+INSERT replace, kept for a clean first load or a reset.
+      so only genuinely new/changed/removed notices touch bronze — re-loading the
+      same file is a no-op and downstream incrementals process only the delta.
+      Catches corrections and source-side deletes the incremental mode cannot.
+    mode="full": the legacy TRUNCATE+INSERT replace, for a clean first load or reset.
     """
     if not csv_path.exists():
         log.error("File not found: %s", csv_path)
@@ -158,9 +200,30 @@ def load_csv_to_bronze(csv_path: Path, mode: str = "delta") -> None:
         """)
         cur.execute("CREATE STAGE IF NOT EXISTS austender_stage FILE_FORMAT=ff_csv_austender")
 
-        # 2. PUT: upload the local file to the internal stage (auto-compressed).
-        posix = csv_path.resolve().as_posix()
-        log.info("PUT %s -> @austender_stage ...", csv_path.name)
+        # 1b. Incremental extraction ("delta on input"): ask bronze for the high
+        #     watermark (the latest publishdate it already holds) and upload ONLY the
+        #     rows at or after it, instead of the whole 72 MB snapshot. This is the
+        #     real cost saver — the tail is a few hundred rows, not 241k. The upsert
+        #     MERGE below (no prune) then merges just those. An empty table yields a
+        #     NULL watermark, which loads everything (first-load fallback).
+        upload_path = csv_path
+        if mode == "incremental":
+            watermark = cur.execute(
+                "SELECT MAX(publishdate) FROM raw_contract_data").fetchone()[0]
+            tmp = Path(tempfile.gettempdir()) / "austender_incremental.csv"
+            kept, total = _filter_csv_by_watermark(csv_path, tmp, watermark)
+            log.info("Incremental: watermark=%s -> %s of %s source rows are new",
+                     watermark, f"{kept:,}", f"{total:,}")
+            if kept == 0:
+                log.info("Nothing new since %s — bronze already current, exiting.",
+                         watermark)
+                return
+            upload_path = tmp
+
+        # 2. PUT: upload the file (full snapshot, or the incremental tail) to the
+        #    internal stage (auto-compressed).
+        posix = upload_path.resolve().as_posix()
+        log.info("PUT %s -> @austender_stage ...", upload_path.name)
         cur.execute(
             f"PUT 'file://{posix}' @austender_stage "
             "AUTO_COMPRESS=TRUE OVERWRITE=TRUE PARALLEL=4"
@@ -190,7 +253,7 @@ def load_csv_to_bronze(csv_path: Path, mode: str = "delta") -> None:
             FROM (
                 SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
                        METADATA$FILENAME
-                FROM @austender_stage/{csv_path.name}.gz
+                FROM @austender_stage/{upload_path.name}.gz
             )
             FILE_FORMAT = (FORMAT_NAME = ff_csv_austender)
             ON_ERROR = 'ABORT_STATEMENT'
@@ -205,7 +268,19 @@ def load_csv_to_bronze(csv_path: Path, mode: str = "delta") -> None:
                 sys.exit(1)
 
         # 4. Publish. Only reached because COPY succeeded.
-        if mode == "delta":
+        if mode == "incremental":
+            # The scratch holds only the tail (rows >= watermark), NOT a full
+            # snapshot — so upsert only, never prune. Pruning here would delete
+            # every notice not in this small batch. _loaded_at still refreshes only
+            # for rows that genuinely changed, so re-reading the boundary date is a
+            # no-op and the incremental fact merges just the new notices.
+            log.info("Publishing (incremental): MERGE new notices into raw_contract_data")
+            cur.execute("BEGIN")
+            cur.execute(_snapshot_merge_sql("raw_contract_data", "raw_contract_data_load"))
+            merged = cur.fetchone()  # (rows inserted, rows updated)
+            cur.execute("COMMIT")
+            log.info("Incremental result: inserted/updated=%s", merged)
+        elif mode == "delta":
             # Snapshot upsert + delete against the live table, but refresh
             # _loaded_at only for rows that actually changed (see the SQL builders).
             # Re-loading the same file writes nothing. Both statements run in one
@@ -243,11 +318,13 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Load the AusTender CSV into the Bronze layer")
     p.add_argument("--file", default="../AustralianFederalContracts.csv",
                    help="Path to the CSV (default: ../AustralianFederalContracts.csv)")
-    p.add_argument("--full-reload", action="store_true",
-                   help="Replace the table (TRUNCATE+INSERT) instead of a delta MERGE. "
-                        "Use for a clean first load or a reset; delta is the default.")
+    p.add_argument("--mode", choices=["incremental", "delta", "full"], default="delta",
+                   help="incremental: upload only rows newer than bronze's watermark "
+                        "(cheapest steady state). delta (default): MERGE the full "
+                        "snapshot, catching corrections and deletes. full: TRUNCATE+"
+                        "INSERT for a clean first load or reset.")
     args = p.parse_args()
-    load_csv_to_bronze(Path(args.file), mode="full" if args.full_reload else "delta")
+    load_csv_to_bronze(Path(args.file), mode=args.mode)
 
 
 if __name__ == "__main__":
