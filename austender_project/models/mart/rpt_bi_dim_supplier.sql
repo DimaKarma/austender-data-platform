@@ -12,6 +12,6 @@
 select
     supplier_entity_key,
     any_value(supplier_entity_name) as supplier_entity_name,
-    count(*)                        as name_spellings
+    count(*) as name_spellings
 from {{ ref('dim_supplier') }}
 group by supplier_entity_key
