@@ -1,0 +1,38 @@
+// Power BI measures for the AusTender model.
+// Fact table: rpt_contracts. Date table: rpt_bi_dim_date (marked on full_date).
+//
+// The key modeling point: contract_value must NOT be summed blindly. The mart
+// surfaces is_attributable (the value is on a real named supplier, not an agency
+// placeholder ABN or a non-supplier channel), so the "trustworthy" spend measure
+// gates on it while Total Spend keeps full coverage. Report authors get the correct
+// number by default.
+
+Contract Count = COUNTROWS ( rpt_contracts )
+
+Total Spend = SUM ( rpt_contracts[contract_value] )
+
+Attributable Spend =
+CALCULATE ( [Total Spend], rpt_contracts[is_attributable] = TRUE )
+
+Attributable % =
+DIVIDE ( [Attributable Spend], [Total Spend] )
+
+Active Contracts =
+CALCULATE ( [Contract Count], rpt_contracts[is_active] = TRUE )
+
+Distinct Suppliers =
+DISTINCTCOUNT ( rpt_contracts[supplier_entity_key] )
+
+Avg Contract Value =
+DIVIDE ( [Total Spend], [Contract Count] )
+
+// --- Time intelligence (requires the marked Date table + its relationship) ---
+
+Total Spend PY =
+CALCULATE ( [Total Spend], SAMEPERIODLASTYEAR ( rpt_bi_dim_date[full_date] ) )
+
+Total Spend YoY % =
+DIVIDE ( [Total Spend] - [Total Spend PY], [Total Spend PY] )
+
+Total Spend YTD =
+TOTALYTD ( [Total Spend], rpt_bi_dim_date[full_date] )

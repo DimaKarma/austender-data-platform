@@ -30,6 +30,8 @@ Medallion Architecture, RBAC, CI/CD**.
 - **Snowflake** — warehouse, database, schemas, file format, internal stage, `COPY INTO`,
   and the native incremental primitives (**Streams, Tasks, Dynamic Tables**) shown
   alongside the dbt/Python path in `snowflake/05_native_incremental.sql`.
+- **Power BI consumption** — a conformed star in the mart plus the semantic model as
+  code (`powerbi/`: M queries, DAX measures, and the Import-vs-DirectQuery decision).
 - **RBAC** — functional roles (`de` / `analyst` / `ci`), a hierarchy under `SYSADMIN`,
   and least privilege: the analyst sees only the Mart, and the CI role is granted
   nothing on the prod star (it can read Bronze and build its own `CI_*` schemas).
@@ -109,6 +111,7 @@ Med-Pet/
 │   ├── 03_abr_bronze.sql            # ABR bronze table + stage
 │   ├── 04_resource_monitor.sql      # 50-credit monthly monitor on the warehouses
 │   └── 05_native_incremental.sql    # Snowflake-native incremental: Stream+Task, Dynamic Table
+├── powerbi/                         # Power BI model as code: queries.m, measures.dax, guide
 ├── ingestion/
 │   ├── load_to_bronze.py            # ELT: local CSV → PUT → COPY INTO bronze
 │   ├── load_abr_to_bronze.py        # ABR reference data: download → stream XML → bronze
@@ -226,6 +229,10 @@ measures defined once, so the correct query is the default rather than a footnot
 - `rpt_supplier_spend` — one row per real supplier (Hays is one line, not 77),
   with `total_spend` and `attributable_spend`.
 - `rpt_agency_spend` — spend per agency per year, both measures.
+- `rpt_bi_dim_supplier` / `_agency` / `_category` / `_date` — a conformed star for
+  Power BI, so a model can relate `rpt_contracts` on surrogate keys. The Power BI
+  semantic model is committed as code (M queries + DAX measures + the Import-vs-
+  DirectQuery decision) under [`powerbi/`](powerbi/), not as an opaque `.pbix`.
 
 `total_spend` reconciles to the raw fact ($191.01B); `attributable_spend`
 ($156.91B) is the part traceable to a named supplier — the $34.10B gap is

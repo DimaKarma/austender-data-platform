@@ -62,9 +62,12 @@ select
     -- certain-only analysis.
     s.abn_source,
 
-    -- agency and category
+    -- agency and category (keys exposed so a Power BI star can relate on the
+    -- surrogate keys rather than on name strings)
+    a.agency_key,
     a.agency_name,
     a.agency_abn,
+    c.category_key,
     c.category_name,
 
     -- time

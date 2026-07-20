@@ -55,6 +55,40 @@ models:
       - name: attributable_spend
         description: "The subset attributable to a real named supplier."
 
+  - name: rpt_bi_dim_agency
+    description: "Agency dimension for the Power BI star (mart view over dim_agency,
+      so the analyst/BI role can build a star without reading GOLD)."
+    columns:
+      - name: agency_key
+        description: "Surrogate PK; relates to rpt_contracts.agency_key."
+        data_tests: [not_null, unique]
+
+  - name: rpt_bi_dim_category
+    description: "Procurement-category (UNSPSC) dimension for the Power BI star."
+    columns:
+      - name: category_key
+        description: "Surrogate PK; relates to rpt_contracts.category_key."
+        data_tests: [not_null, unique]
+
+  - name: rpt_bi_dim_supplier
+    description: "Supplier dimension for the Power BI star, rolled up to the real
+      supplier entity (supplier_entity_key). Relates to rpt_contracts.supplier_entity_key."
+    columns:
+      - name: supplier_entity_key
+        description: "Surrogate PK at supplier-entity grain."
+        data_tests: [not_null, unique]
+
+  - name: rpt_bi_dim_date
+    description: "Calendar dimension for the Power BI star; mark as the model's Date
+      table for time intelligence. Relates to rpt_contracts.publish_date on full_date."
+    columns:
+      - name: date_key
+        description: "Surrogate PK (YYYYMMDD)."
+        data_tests: [not_null, unique]
+      - name: full_date
+        description: "The calendar date; the relationship key from the fact's publish_date."
+        data_tests: [not_null, unique]
+
   - name: rpt_supplier_history
     description: >
       SCD2 history of the supplier dimension (from the supplier_history
