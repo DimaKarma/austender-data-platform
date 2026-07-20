@@ -6,9 +6,20 @@ models:
       Base reporting view, one row per contract, with the supplier resolved to
       its real entity and is_attributable computed. The consumption layer builds
       on this so every report applies the same caveats.
+
+
+      Governance: supplier_abn carries a Dynamic Data Masking policy
+      (mart.mask_supplier_abn) applied by a post_hook — the engineer role sees the
+      raw ABN, every other role (the BI analyst) sees it partially masked. AusTender
+      is public data, so this demonstrates the masking mechanism; the same policy
+      would protect real PII (SSN, DOB, diagnoses) in a regulated setting.
     columns:
       - name: contract_id
         data_tests: [not_null, unique]
+      - name: supplier_abn
+        description: "Supplier ABN. Masked by mart.mask_supplier_abn: raw for the
+          engineer role, partially masked (XXXXXXXX + last 3 digits) for the analyst.
+          Applied via a post_hook so it survives each rebuild; skipped on CI."
       - name: is_attributable
         description: "True when the contract value can be attributed to a named
           supplier: the ABN is not an agency placeholder and the supplier is not
