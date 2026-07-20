@@ -30,19 +30,30 @@ models:
       - name: supplier_entity_key
         data_tests: [not_null, unique]
       - name: total_spend
+        description: "All contract value grouped to this supplier entity."
         data_tests: [not_null]
+      - name: attributable_spend
+        description: "The subset of total_spend on attributable contracts (real
+          named supplier, not a placeholder ABN or a non-company channel). Use this
+          for supplier league tables; total_spend for coverage."
 
   - name: rpt_agency_spend
     description: "Spend per agency per year, carrying total_spend and attributable_spend."
     columns:
       - name: total_spend
+        description: "All contract value for the agency in the year."
         data_tests: [not_null]
+      - name: attributable_spend
+        description: "The subset attributable to a real named supplier."
 
   - name: rpt_category_spend
     description: "Spend per procurement category (UNSPSC) per year, both measures."
     columns:
       - name: total_spend
+        description: "All contract value in the category-year."
         data_tests: [not_null]
+      - name: attributable_spend
+        description: "The subset attributable to a real named supplier."
 
   - name: rpt_supplier_history
     description: >

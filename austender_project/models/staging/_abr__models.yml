@@ -1,0 +1,40 @@
+version: 2
+
+models:
+  - name: stg_abr_entity
+    description: >
+      One row per ABN with its canonical (MAIN) name and register attributes.
+      Bronze holds several rows per ABN (one per name), so this filters to
+      name_type = 'MAIN' to keep the dim_supplier enrichment join one-to-one; the
+      alternate names are exposed separately by stg_abr_names. Materialized as a
+      table in prod and a view on the `ci` target so a PR run does not copy ~20.4M
+      rows into CI's upstream.
+    columns:
+      - name: abn
+        description: "The 11-digit ABN — the join key back to a contract's supplierabn."
+        data_tests: [not_null, unique]
+      - name: entity_name
+        description: "The entity's registered canonical (MAIN) name."
+      - name: abn_status
+        description: "ACT or CAN in the register at extract time."
+      - name: is_government_entity
+        description: "True when entity_type_text contains 'Government' — read from
+          the register's words, not hardcoded type codes. This is what exposes an
+          agency's own ABN sitting in a contract's supplier field."
+        data_tests: [not_null]
+
+  - name: stg_abr_names
+    description: >
+      Every name each ABN is known by (main, trading, other), so a contract that
+      used a supplier's trading name can still resolve to its ABN. Feeds
+      int_abr_name_lookup only. Table in prod, view on the `ci` target to avoid
+      copying 26.6M rows into CI.
+    columns:
+      - name: abn
+        description: "The 11-digit ABN."
+        data_tests: [not_null]
+      - name: entity_name
+        description: "One name the ABN is known by (any name_type)."
+        data_tests: [not_null]
+      - name: name_type
+        description: "MAIN (canonical), TRD (trading), OTN (other), etc."
