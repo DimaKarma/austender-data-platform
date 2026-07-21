@@ -6,6 +6,17 @@ Automated AusTender ETL loader into the BRONZE layer in Snowflake.
 Mirrors the production pattern:
     local CSV --PUT--> internal stage --COPY INTO--> bronze table
 
+Production deployment pattern (cloud object storage):
+    In an enterprise cloud environment the PUT-to-internal-stage step is replaced
+    by a landing zone in object storage — e.g. Azure ADLS Gen2 / Blob Storage,
+    where this script deposits the raw file instead of uploading it. Snowflake
+    then reads it through an EXTERNAL STAGE backed by a STORAGE INTEGRATION
+    (managed-identity credentials, no keys in the loader), and the COPY INTO is
+    triggered by Snowpipe auto-ingest on the storage event rather than by this
+    process. Everything downstream of the COPY — the scratch-table load, the
+    MERGE publish, the modes below — is unchanged: only the transport and the
+    trigger differ. S3 + IAM role or GCS + service account are the same shape.
+
 Notes:
   * Credentials come from the environment / .env — no passwords in code.
   * Idempotent: publishing is a MERGE on cnid, so a re-run never duplicates rows.

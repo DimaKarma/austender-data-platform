@@ -100,6 +100,19 @@ The Gold model is a **star**: the `fct_contracts` fact (grain = one contract)
 plus the `dim_supplier`, `dim_agency`, `dim_category` and `dim_date` dimensions,
 joined through surrogate keys.
 
+> **Note — production deployment pattern (cloud object storage).** Here the
+> loader uploads the CSV straight to a Snowflake **internal stage** (`PUT
+> file://…`), which keeps the repo self-contained and runnable from a laptop. In
+> an enterprise cloud environment the transport changes and nothing else does:
+> `load_to_bronze.py` deposits the raw file into a landing zone in object storage
+> — e.g. **Azure ADLS Gen2 / Blob Storage** — and Snowflake reads it through an
+> **external stage** backed by a **storage integration** (managed-identity
+> credentials, so no storage keys live in the loader), with **Snowpipe**
+> auto-ingest firing the `COPY INTO` on the storage event instead of the script
+> calling it. The scratch-table load, the MERGE publish and the three load modes
+> are identical either way. S3 + IAM role or GCS + service account are the same
+> shape.
+
 ## Repository layout
 
 ```
