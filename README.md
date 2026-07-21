@@ -7,7 +7,7 @@
 
 An end-to-end analytics pipeline built on real data about Australian federal
 contracts ([AusTender](https://www.tenders.gov.au/)). The project targets the
-stack and requirements of the Medavie data-engineering role: **Snowflake, dbt,
+stack and requirements of a modern data-engineering role: **Snowflake, dbt,
 Medallion Architecture, RBAC, CI/CD**.
 
 > **TL;DR** — 241,164 government contracts flow through a Bronze → Silver → Gold →
