@@ -64,5 +64,13 @@ jobs:
       - name: dbt build (run + test)
         run: dbt build --target ci
 
+      - name: Lineage diagram is current
+        # The README's DAG is generated from target/manifest.json. Rebuilding it
+        # here and diffing keeps the "every arrow is a real ref()" claim true
+        # instead of aspirational: rewire a model without regenerating and CI
+        # fails. Path-based layering means the ci target's manifest produces the
+        # same block as prod's.
+        run: python scripts/generate_lineage.py --check
+
       - name: dbt docs generate
         run: dbt docs generate --target ci
